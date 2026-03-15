@@ -19,6 +19,13 @@ Set your API key:
 export OPENAI_API_KEY=your_key_here
 ```
 
+Use an OpenAI-compatible provider endpoint when needed:
+
+```sh
+export OPENAI_BASE_URL=https://api.deepseek.com
+export MINIOC_MODEL=deepseek-chat
+```
+
 Run against the current repository:
 
 ```sh
@@ -37,6 +44,7 @@ Useful flags:
 - `--model` to override the model name
 - `--max-steps` to cap the tool loop
 - `--auto-approve` to skip local confirmations for write/edit/bash
+- `OPENAI_BASE_URL` to target an OpenAI-compatible API endpoint
 
 ## Current limitations
 

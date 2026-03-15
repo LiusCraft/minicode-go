@@ -13,13 +13,18 @@ type OpenAIClient struct {
 	client openai.Client
 }
 
-func NewOpenAIClient(apiKey string) (*OpenAIClient, error) {
+func NewOpenAIClient(apiKey, baseURL string) (*OpenAIClient, error) {
 	if strings.TrimSpace(apiKey) == "" {
 		return nil, fmt.Errorf("missing OpenAI API key")
 	}
 
+	requestOptions := []option.RequestOption{option.WithAPIKey(apiKey)}
+	if baseURL := strings.TrimSpace(baseURL); baseURL != "" {
+		requestOptions = append(requestOptions, option.WithBaseURL(baseURL))
+	}
+
 	return &OpenAIClient{
-		client: openai.NewClient(option.WithAPIKey(apiKey)),
+		client: openai.NewClient(requestOptions...),
 	}, nil
 }
 

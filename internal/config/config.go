@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -16,6 +17,7 @@ type Options struct {
 
 type Config struct {
 	APIKey      string
+	BaseURL     string
 	Model       string
 	MaxSteps    int
 	AutoApprove bool
@@ -39,8 +41,20 @@ func Load(opts Options) (Config, error) {
 		return Config{}, fmt.Errorf("OPENAI_API_KEY is required")
 	}
 
+	baseURL := strings.TrimSpace(os.Getenv("OPENAI_BASE_URL"))
+	if baseURL != "" {
+		parsed, err := url.Parse(baseURL)
+		if err != nil {
+			return Config{}, fmt.Errorf("invalid OPENAI_BASE_URL: %w", err)
+		}
+		if parsed.Scheme == "" || parsed.Host == "" {
+			return Config{}, fmt.Errorf("invalid OPENAI_BASE_URL: must include scheme and host")
+		}
+	}
+
 	return Config{
 		APIKey:      apiKey,
+		BaseURL:     baseURL,
 		Model:       model,
 		MaxSteps:    opts.MaxSteps,
 		AutoApprove: opts.AutoApprove,

@@ -97,7 +97,7 @@ func run() int {
 		tools.WriteFileTool(),
 	)
 
-	client, err := llm.NewOpenAIClient(cfg.APIKey)
+	client, err := llm.NewOpenAIClient(cfg.APIKey, cfg.BaseURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "llm setup error: %v\n", err)
 		return 1

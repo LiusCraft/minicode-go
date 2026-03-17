@@ -19,8 +19,9 @@ type CallContext struct {
 }
 
 type Spec struct {
-	Name        string
-	Description string
-	Parameters  map[string]any
-	Execute     func(ctx context.Context, callCtx CallContext, arguments json.RawMessage) (Result, error)
+	Name         string
+	Description  string
+	Parameters   map[string]any
+	ParallelSafe bool
+	Execute      func(ctx context.Context, callCtx CallContext, arguments json.RawMessage) (Result, error)
 }

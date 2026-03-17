@@ -11,6 +11,7 @@
 - Repo-bound path checks and confirmation prompts for write/edit/bash tools
 - Streaming assistant output plus concise tool activity in the CLI
 - Line-based edit diffs and write previews in confirmation prompts and tool results
+- Parallel-safe tool calls can execute concurrently in one model step
 - JSON session persistence under `.minioc/sessions/`
 
 ## Quick start
@@ -51,7 +52,7 @@ Useful flags:
 ## Current limitations
 
 - Session persistence is JSON-based, not SQLite yet
-- Tool execution is sequential
+- Side-effecting tools still execute serially; only parallel-safe calls are batched
 - Conversation context is sent from local session history on each step
 - `bash` uses a conservative blocklist, not a full command parser
 
@@ -59,5 +60,5 @@ Useful flags:
 
 1. Replace JSON session storage with SQLite
 2. Add tests for path safety, tool behavior, and loop control
-3. Add parallel tool execution when calls are independent
+3. Broaden safe parallel scheduling beyond read-only tools
 4. Support richer streamed progress metadata for long-running tool steps

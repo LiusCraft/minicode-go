@@ -47,3 +47,8 @@ func (r *Registry) Execute(ctx context.Context, name string, arguments json.RawM
 	}
 	return spec.Execute(ctx, callCtx, arguments)
 }
+
+func (r *Registry) IsParallelSafe(name string) bool {
+	spec, ok := r.tools[name]
+	return ok && spec.ParallelSafe
+}

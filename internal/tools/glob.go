@@ -23,8 +23,9 @@ type globArgs struct {
 
 func GlobTool() Spec {
 	return Spec{
-		Name:        "glob",
-		Description: "Match file paths with glob patterns like **/*.go or cmd/**/*.go.",
+		Name:         "glob",
+		Description:  "Match file paths with glob patterns like **/*.go or cmd/**/*.go.",
+		ParallelSafe: true,
 		Parameters: objectSchema(map[string]any{
 			"pattern": map[string]any{"type": "string", "description": "Glob pattern to match"},
 			"path":    map[string]any{"type": "string", "description": "Optional base directory; defaults to current workdir"},

@@ -37,7 +37,7 @@ func (c *OpenAIClient) Run(ctx context.Context, req Request) (Result, error) {
 		Model:             openai.ChatModel(req.Model),
 		Messages:          buildMessages(req.Instructions, req.Messages),
 		Tools:             buildTools(req.Tools),
-		ParallelToolCalls: openai.Bool(false),
+		ParallelToolCalls: openai.Bool(len(req.Tools) > 0),
 	}
 
 	return c.runStreaming(ctx, params, req.Stream)

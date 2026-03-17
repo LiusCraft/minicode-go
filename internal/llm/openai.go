@@ -40,6 +40,46 @@ func (c *OpenAIClient) Run(ctx context.Context, req Request) (Result, error) {
 		ParallelToolCalls: openai.Bool(false),
 	}
 
+	return c.runStreaming(ctx, params, req.Stream)
+}
+
+func (c *OpenAIClient) runStreaming(ctx context.Context, params openai.ChatCompletionNewParams, handler *StreamHandler) (Result, error) {
+	streamParams := params
+	streamParams.StreamOptions = openai.ChatCompletionStreamOptionsParam{
+		IncludeUsage: openai.Bool(true),
+	}
+
+	stream := c.client.Chat.Completions.NewStreaming(ctx, streamParams)
+	acc := openai.ChatCompletionAccumulator{}
+	sawChunk := false
+	defer emitMessageDone(handler)
+
+	for stream.Next() {
+		sawChunk = true
+		chunk := stream.Current()
+		if !acc.AddChunk(chunk) {
+			return Result{}, fmt.Errorf("failed to accumulate streamed chat completion")
+		}
+		if len(chunk.Choices) == 0 {
+			continue
+		}
+		emitTextDelta(handler, chunk.Choices[0].Delta)
+	}
+
+	if err := stream.Err(); err != nil {
+		if !sawChunk {
+			return c.runNonStreaming(ctx, params, handler)
+		}
+		return Result{}, err
+	}
+	if len(acc.Choices) == 0 {
+		return Result{}, fmt.Errorf("chat completion returned no choices")
+	}
+
+	return buildResult(acc.ID, acc.Choices[0].Message, acc.ChatCompletion), nil
+}
+
+func (c *OpenAIClient) runNonStreaming(ctx context.Context, params openai.ChatCompletionNewParams, handler *StreamHandler) (Result, error) {
 	completion, err := c.client.Chat.Completions.New(ctx, params)
 	if err != nil {
 		return Result{}, err
@@ -48,27 +88,64 @@ func (c *OpenAIClient) Run(ctx context.Context, req Request) (Result, error) {
 		return Result{}, fmt.Errorf("chat completion returned no choices")
 	}
 
-	choice := completion.Choices[0]
-	message := choice.Message
-	result := Result{
-		ResponseID: completion.ID,
-		Text:       strings.TrimSpace(message.Content),
-		Raw:        completion,
+	result := buildResult(completion.ID, completion.Choices[0].Message, completion)
+	if handler != nil {
+		if text := result.Text; text != "" && handler.OnTextDelta != nil {
+			handler.OnTextDelta(text)
+		}
+		emitMessageDone(handler)
 	}
+	return result, nil
+}
 
-	for _, item := range message.ToolCalls {
-		functionCall, ok := item.AsAny().(openai.ChatCompletionMessageFunctionToolCall)
-		if !ok {
+func buildResult(responseID string, message openai.ChatCompletionMessage, raw any) Result {
+	return Result{
+		ResponseID: responseID,
+		Text:       renderAssistantText(message),
+		ToolCalls:  collectToolCalls(message.ToolCalls),
+		Raw:        raw,
+	}
+}
+
+func renderAssistantText(message openai.ChatCompletionMessage) string {
+	if text := strings.TrimSpace(message.Content); text != "" {
+		return text
+	}
+	return strings.TrimSpace(message.Refusal)
+}
+
+func collectToolCalls(items []openai.ChatCompletionMessageToolCallUnion) []ToolCall {
+	result := make([]ToolCall, 0, len(items))
+	for _, item := range items {
+		if item.Type != "function" || item.Function.Name == "" {
 			continue
 		}
-		result.ToolCalls = append(result.ToolCalls, ToolCall{
-			ID:        functionCall.ID,
-			Name:      functionCall.Function.Name,
-			Arguments: []byte(functionCall.Function.Arguments),
+		result = append(result, ToolCall{
+			ID:        item.ID,
+			Name:      item.Function.Name,
+			Arguments: []byte(item.Function.Arguments),
 		})
 	}
+	return result
+}
 
-	return result, nil
+func emitTextDelta(handler *StreamHandler, delta openai.ChatCompletionChunkChoiceDelta) {
+	if handler == nil || handler.OnTextDelta == nil {
+		return
+	}
+	if delta.Content != "" {
+		handler.OnTextDelta(delta.Content)
+	}
+	if delta.Refusal != "" {
+		handler.OnTextDelta(delta.Refusal)
+	}
+}
+
+func emitMessageDone(handler *StreamHandler) {
+	if handler == nil || handler.OnMessageDone == nil {
+		return
+	}
+	handler.OnMessageDone()
 }
 
 func buildMessages(instructions string, messages []Message) []openai.ChatCompletionMessageParamUnion {

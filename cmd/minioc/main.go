@@ -16,6 +16,7 @@ import (
 	"minioc/internal/session"
 	"minioc/internal/store"
 	"minioc/internal/tools"
+	"minioc/internal/tui"
 )
 
 func main() {
@@ -33,26 +34,19 @@ func run() int {
 	continueFlag := fs.String("continue", "", "continue an existing session by id")
 	maxStepsFlag := fs.Int("max-steps", 1000, "maximum model/tool loop steps")
 	autoApproveFlag := fs.Bool("auto-approve", false, "auto approve bash/edit/write tool calls")
+	tuiFlag := fs.Bool("tui", true, "launch the Bubble Tea TUI")
+	noTUIFlag := fs.Bool("no-tui", false, "run in plain streaming CLI mode")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return 2
 	}
 
 	promptText := strings.TrimSpace(strings.Join(fs.Args(), " "))
-	if promptText == "" {
+	useTUI := *tuiFlag && !*noTUIFlag
+	if promptText == "" && !useTUI {
 		fmt.Fprintln(os.Stderr, "usage: minioc [flags] \"your prompt\"")
 		fs.PrintDefaults()
 		return 2
-	}
-
-	cfg, err := config.Load(config.Options{
-		ModelOverride: *modelFlag,
-		MaxSteps:      *maxStepsFlag,
-		AutoApprove:   *autoApproveFlag,
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
-		return 1
 	}
 
 	workdir, err := project.ResolveWorkdir(*workdirFlag)
@@ -64,6 +58,16 @@ func run() int {
 	repoRoot, err := project.DetectRepoRoot(workdir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "repo root error: %v\n", err)
+		return 1
+	}
+
+	cfg, err := config.Load(config.Options{
+		ModelOverride: *modelFlag,
+		MaxSteps:      *maxStepsFlag,
+		AutoApprove:   *autoApproveFlag,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
 		return 1
 	}
 
@@ -108,6 +112,22 @@ func run() int {
 		Store:    sessionStore,
 		Tools:    registry,
 		MaxSteps: cfg.MaxSteps,
+	}
+
+	if useTUI {
+		if err := tui.Run(tui.Config{
+			RepoRoot:    repoRoot,
+			Workdir:     workdir,
+			Model:       cfg.Model,
+			Prompt:      promptText,
+			Loop:        loop,
+			Session:     current,
+			AutoApprove: cfg.AutoApprove,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "tui error: %v\n", err)
+			return 1
+		}
+		return 0
 	}
 
 	printer := newStreamPrinter(os.Stdout, os.Stderr)

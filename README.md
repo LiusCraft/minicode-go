@@ -29,7 +29,13 @@ export OPENAI_BASE_URL=https://api.deepseek.com
 export MINIOC_MODEL=deepseek-chat
 ```
 
-Run against the current repository:
+Launch the TUI (default mode):
+
+```sh
+go run ./cmd/minioc
+```
+
+Run against the current repository with an initial prompt:
 
 ```sh
 go run ./cmd/minioc -- "summarize this repository"
@@ -41,12 +47,19 @@ Continue a previous session:
 go run ./cmd/minioc --continue sess_xxxxx "now add tests"
 ```
 
+Use plain streaming CLI mode (no TUI):
+
+```sh
+go run ./cmd/minioc --no-tui -- "summarize this repository"
+```
+
 Useful flags:
 
 - `-C` to change the working directory
 - `--model` to override the model name
 - `--max-steps` to cap the tool loop
 - `--auto-approve` to skip local confirmations for write/edit/bash
+- `--no-tui` to force plain streaming CLI mode (TUI is default)
 - `OPENAI_BASE_URL` to target an OpenAI-compatible API endpoint
 
 ## Current limitations

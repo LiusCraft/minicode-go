@@ -3,9 +3,11 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"minioc/internal/llm"
 	"minioc/internal/prompt"
@@ -26,13 +28,15 @@ type Hooks struct {
 	OnAssistantDelta       func(string)
 	OnAssistantMessageDone func()
 	OnToolCall             func(llm.ToolCall)
-	OnToolResult           func(name, status, output string)
+	OnToolResult           func(call llm.ToolCall, status, output string)
 }
 
 type toolExecution struct {
 	Status string
 	Output string
 }
+
+const llmStepTimeout = 90 * time.Second
 
 func (l Loop) Run(ctx context.Context, sess *session.Session, permissions *safety.PermissionManager, userInput string, hooks *Hooks) (string, error) {
 	if strings.TrimSpace(userInput) == "" {
@@ -64,8 +68,13 @@ func (l Loop) Run(ctx context.Context, sess *session.Session, permissions *safet
 			Stream:       streamHandler,
 		}
 
-		result, err := l.Client.Run(ctx, req)
+		stepCtx, cancel := context.WithTimeout(ctx, llmStepTimeout)
+		result, err := l.Client.Run(stepCtx, req)
+		cancel()
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return "", fmt.Errorf("model request timed out after %s", llmStepTimeout)
+			}
 			return "", err
 		}
 
@@ -161,7 +170,7 @@ func (l Loop) executeParallelToolCalls(ctx context.Context, calls []llm.ToolCall
 	for item := range completed {
 		results[item.index] = item.execution
 		if hooks != nil && hooks.OnToolResult != nil {
-			hooks.OnToolResult(calls[item.index].Name, item.execution.Status, item.execution.Output)
+			hooks.OnToolResult(calls[item.index], item.execution.Status, item.execution.Output)
 		}
 	}
 
@@ -175,7 +184,7 @@ func (l Loop) executeToolCall(ctx context.Context, call llm.ToolCall, callCtx to
 
 	execution := l.runToolCall(ctx, call, callCtx)
 	if hooks != nil && hooks.OnToolResult != nil {
-		hooks.OnToolResult(call.Name, execution.Status, execution.Output)
+		hooks.OnToolResult(call, execution.Status, execution.Output)
 	}
 	return execution
 }

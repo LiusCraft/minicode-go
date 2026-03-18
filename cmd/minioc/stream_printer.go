@@ -46,13 +46,13 @@ func (p *streamPrinter) ToolCall(call llm.ToolCall) {
 	fmt.Fprintf(p.err, "-> %s %s\n", call.Name, args)
 }
 
-func (p *streamPrinter) ToolResult(name, status, output string) {
+func (p *streamPrinter) ToolResult(call llm.ToolCall, status, output string) {
 	p.AssistantMessageDone()
 	line := compactPreview(firstLine(output), 120)
 	if line == "" {
 		line = status
 	}
-	fmt.Fprintf(p.err, "<- %s %s\n", name, line)
+	fmt.Fprintf(p.err, "<- %s %s\n", call.Name, line)
 }
 
 func (p *streamPrinter) Streamed() bool {

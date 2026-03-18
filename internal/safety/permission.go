@@ -13,6 +13,7 @@ type PermissionManager struct {
 	autoApprove bool
 	reader      *bufio.Reader
 	out         io.Writer
+	confirmFn   func(kind, summary string) error
 }
 
 func NewPermissionManager(in io.Reader, out io.Writer, autoApprove bool) *PermissionManager {
@@ -20,6 +21,13 @@ func NewPermissionManager(in io.Reader, out io.Writer, autoApprove bool) *Permis
 		autoApprove: autoApprove,
 		reader:      bufio.NewReader(in),
 		out:         out,
+	}
+}
+
+func NewCallbackPermissionManager(autoApprove bool, confirmFn func(kind, summary string) error) *PermissionManager {
+	return &PermissionManager{
+		autoApprove: autoApprove,
+		confirmFn:   confirmFn,
 	}
 }
 
@@ -42,6 +50,9 @@ func (m *PermissionManager) ConfirmWrite(path, summary string) error {
 func (m *PermissionManager) confirm(kind, summary string) error {
 	if m.autoApprove {
 		return nil
+	}
+	if m.confirmFn != nil {
+		return m.confirmFn(kind, summary)
 	}
 
 	if _, err := fmt.Fprintf(m.out, "\nAllow %s?\n%s\n[y/N]: ", kind, summary); err != nil {

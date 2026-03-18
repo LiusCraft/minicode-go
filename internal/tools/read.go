@@ -24,8 +24,9 @@ type readArgs struct {
 
 func ReadTool() Spec {
 	return Spec{
-		Name:        "read_file",
-		Description: "Read a file or directory from the local repository. Returns numbered lines for files and entry names for directories.",
+		Name:         "read_file",
+		Description:  "Read a file or directory from the local repository. Returns numbered lines for files and entry names for directories.",
+		ParallelSafe: true,
 		Parameters: objectSchema(map[string]any{
 			"filePath": map[string]any{"type": "string", "description": "Absolute or repo-relative file path"},
 			"offset":   map[string]any{"type": "integer", "description": "1-based line offset for files or entry offset for directories"},

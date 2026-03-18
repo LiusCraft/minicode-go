@@ -25,8 +25,9 @@ type grepArgs struct {
 
 func GrepTool() Spec {
 	return Spec{
-		Name:        "grep",
-		Description: "Search file contents with a regular expression. Returns matching file paths, line numbers, and lines.",
+		Name:         "grep",
+		Description:  "Search file contents with a regular expression. Returns matching file paths, line numbers, and lines.",
+		ParallelSafe: true,
 		Parameters: objectSchema(map[string]any{
 			"pattern": map[string]any{"type": "string", "description": "Regular expression pattern"},
 			"path":    map[string]any{"type": "string", "description": "Optional base directory; defaults to current workdir"},

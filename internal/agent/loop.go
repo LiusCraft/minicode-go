@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"minioc/internal/llm"
 	"minioc/internal/prompt"
@@ -26,6 +27,11 @@ type Hooks struct {
 	OnAssistantMessageDone func()
 	OnToolCall             func(llm.ToolCall)
 	OnToolResult           func(name, status, output string)
+}
+
+type toolExecution struct {
+	Status string
+	Output string
 }
 
 func (l Loop) Run(ctx context.Context, sess *session.Session, permissions *safety.PermissionManager, userInput string, hooks *Hooks) (string, error) {
@@ -77,32 +83,14 @@ func (l Loop) Run(ctx context.Context, sess *session.Session, permissions *safet
 
 		sess.AddMessage(session.RoleAssistant, strings.TrimSpace(result.Text), session.WithAssistantToolCalls(toSessionToolCalls(result.ToolCalls)))
 
-		for _, call := range result.ToolCalls {
-			if hooks != nil && hooks.OnToolCall != nil {
-				hooks.OnToolCall(call)
-			}
-
-			toolResult, toolErr := l.Tools.Execute(ctx, call.Name, call.Arguments, tools.CallContext{
-				RepoRoot:    sess.RepoRoot,
-				Workdir:     sess.Workdir,
-				Permissions: permissions,
-			})
-
-			status := "completed"
-			output := toolResult.Output
-			if toolErr != nil {
-				status = "error"
-				output = "ERROR: " + toolErr.Error()
-			}
-			if strings.TrimSpace(output) == "" {
-				output = "(no output)"
-			}
-
-			if hooks != nil && hooks.OnToolResult != nil {
-				hooks.OnToolResult(call.Name, status, output)
-			}
-
-			sess.AddMessage(session.RoleTool, output, session.WithTool(call.Name, call.ID, status))
+		executions := l.executeToolCalls(ctx, result.ToolCalls, tools.CallContext{
+			RepoRoot:    sess.RepoRoot,
+			Workdir:     sess.Workdir,
+			Permissions: permissions,
+		}, hooks)
+		for i, call := range result.ToolCalls {
+			execution := executions[i]
+			sess.AddMessage(session.RoleTool, execution.Output, session.WithTool(call.Name, call.ID, execution.Status))
 		}
 
 		if err := l.Store.Save(ctx, sess); err != nil {
@@ -111,6 +99,99 @@ func (l Loop) Run(ctx context.Context, sess *session.Session, permissions *safet
 	}
 
 	return "", fmt.Errorf("reached max steps (%d)", l.MaxSteps)
+}
+
+func (l Loop) executeToolCalls(ctx context.Context, calls []llm.ToolCall, callCtx tools.CallContext, hooks *Hooks) []toolExecution {
+	results := make([]toolExecution, len(calls))
+	for start := 0; start < len(calls); {
+		if !l.Tools.IsParallelSafe(calls[start].Name) {
+			results[start] = l.executeToolCall(ctx, calls[start], callCtx, hooks)
+			start++
+			continue
+		}
+
+		end := start + 1
+		for end < len(calls) && l.Tools.IsParallelSafe(calls[end].Name) {
+			end++
+		}
+
+		if end-start == 1 {
+			results[start] = l.executeToolCall(ctx, calls[start], callCtx, hooks)
+			start = end
+			continue
+		}
+
+		batch := l.executeParallelToolCalls(ctx, calls[start:end], callCtx, hooks)
+		copy(results[start:end], batch)
+		start = end
+	}
+	return results
+}
+
+func (l Loop) executeParallelToolCalls(ctx context.Context, calls []llm.ToolCall, callCtx tools.CallContext, hooks *Hooks) []toolExecution {
+	type completedToolCall struct {
+		index     int
+		execution toolExecution
+	}
+
+	results := make([]toolExecution, len(calls))
+	completed := make(chan completedToolCall, len(calls))
+	var wg sync.WaitGroup
+
+	for i, call := range calls {
+		if hooks != nil && hooks.OnToolCall != nil {
+			hooks.OnToolCall(call)
+		}
+
+		wg.Add(1)
+		go func(index int, call llm.ToolCall) {
+			defer wg.Done()
+			completed <- completedToolCall{
+				index:     index,
+				execution: l.runToolCall(ctx, call, callCtx),
+			}
+		}(i, call)
+	}
+
+	go func() {
+		wg.Wait()
+		close(completed)
+	}()
+
+	for item := range completed {
+		results[item.index] = item.execution
+		if hooks != nil && hooks.OnToolResult != nil {
+			hooks.OnToolResult(calls[item.index].Name, item.execution.Status, item.execution.Output)
+		}
+	}
+
+	return results
+}
+
+func (l Loop) executeToolCall(ctx context.Context, call llm.ToolCall, callCtx tools.CallContext, hooks *Hooks) toolExecution {
+	if hooks != nil && hooks.OnToolCall != nil {
+		hooks.OnToolCall(call)
+	}
+
+	execution := l.runToolCall(ctx, call, callCtx)
+	if hooks != nil && hooks.OnToolResult != nil {
+		hooks.OnToolResult(call.Name, execution.Status, execution.Output)
+	}
+	return execution
+}
+
+func (l Loop) runToolCall(ctx context.Context, call llm.ToolCall, callCtx tools.CallContext) toolExecution {
+	toolResult, toolErr := l.Tools.Execute(ctx, call.Name, call.Arguments, callCtx)
+	status := "completed"
+	output := toolResult.Output
+	if toolErr != nil {
+		status = "error"
+		output = "ERROR: " + toolErr.Error()
+	}
+	if strings.TrimSpace(output) == "" {
+		output = "(no output)"
+	}
+	return toolExecution{Status: status, Output: output}
 }
 
 func toLLMMessages(messages []session.Message) []llm.Message {

@@ -77,7 +77,7 @@ var blockedBashPatterns = []struct {
 }{
 	{name: "recursive delete", re: regexp.MustCompile(`(^|[;&|])\s*rm\s+-rf\b`)},
 	{name: "git hard reset", re: regexp.MustCompile(`\bgit\s+reset\s+--hard\b`)},
-	{name: "git checkout discard", re: regexp.MustCompile(`\bgit\s+checkout\s+--\b`)},
+	{name: "git checkout discard", re: regexp.MustCompile(`\bgit\s+checkout\s+--(?:\s|$)`)},
 	{name: "git clean force", re: regexp.MustCompile(`\bgit\s+clean\s+-f`)},
 	{name: "sudo", re: regexp.MustCompile(`(^|[;&|])\s*sudo\b`)},
 	{name: "disk overwrite", re: regexp.MustCompile(`\bdd\b`)},

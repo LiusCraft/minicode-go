@@ -9,6 +9,8 @@
 - OpenAI Chat Completions client in `internal/llm/openai.go`
 - Tool registry plus `read_file`, `glob`, `grep`, `bash`, `edit`, and `write_file`
 - Repo-bound path checks and confirmation prompts for write/edit/bash tools
+- Streaming assistant output plus concise tool activity in the CLI
+- Line-based edit diffs and write previews in confirmation prompts and tool results
 - JSON session persistence under `.minioc/sessions/`
 
 ## Quick start
@@ -49,14 +51,13 @@ Useful flags:
 ## Current limitations
 
 - Session persistence is JSON-based, not SQLite yet
-- Output is non-streaming for now
 - Tool execution is sequential
 - Conversation context is sent from local session history on each step
 - `bash` uses a conservative blocklist, not a full command parser
 
 ## Suggested next steps
 
-1. Add streaming model output
-2. Replace JSON session storage with SQLite
-3. Improve edit diffs and write previews
-4. Add tests for path safety, tool behavior, and loop control
+1. Replace JSON session storage with SQLite
+2. Add tests for path safety, tool behavior, and loop control
+3. Add parallel tool execution when calls are independent
+4. Support richer streamed progress metadata for long-running tool steps

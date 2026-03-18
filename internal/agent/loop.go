@@ -21,7 +21,14 @@ type Loop struct {
 	MaxSteps int
 }
 
-func (l Loop) Run(ctx context.Context, sess *session.Session, permissions *safety.PermissionManager, userInput string) (string, error) {
+type Hooks struct {
+	OnAssistantDelta       func(string)
+	OnAssistantMessageDone func()
+	OnToolCall             func(llm.ToolCall)
+	OnToolResult           func(name, status, output string)
+}
+
+func (l Loop) Run(ctx context.Context, sess *session.Session, permissions *safety.PermissionManager, userInput string, hooks *Hooks) (string, error) {
 	if strings.TrimSpace(userInput) == "" {
 		return "", fmt.Errorf("user input is empty")
 	}
@@ -35,11 +42,20 @@ func (l Loop) Run(ctx context.Context, sess *session.Session, permissions *safet
 	}
 
 	for step := 0; step < l.MaxSteps; step++ {
+		var streamHandler *llm.StreamHandler
+		if hooks != nil {
+			streamHandler = &llm.StreamHandler{
+				OnTextDelta:   hooks.OnAssistantDelta,
+				OnMessageDone: hooks.OnAssistantMessageDone,
+			}
+		}
+
 		req := llm.Request{
 			Model:        sess.Model,
 			Instructions: prompt.Build(sess.RepoRoot, sess.Workdir, l.MaxSteps),
 			Messages:     toLLMMessages(sess.Messages),
 			Tools:        l.Tools.Definitions(),
+			Stream:       streamHandler,
 		}
 
 		result, err := l.Client.Run(ctx, req)
@@ -62,6 +78,10 @@ func (l Loop) Run(ctx context.Context, sess *session.Session, permissions *safet
 		sess.AddMessage(session.RoleAssistant, strings.TrimSpace(result.Text), session.WithAssistantToolCalls(toSessionToolCalls(result.ToolCalls)))
 
 		for _, call := range result.ToolCalls {
+			if hooks != nil && hooks.OnToolCall != nil {
+				hooks.OnToolCall(call)
+			}
+
 			toolResult, toolErr := l.Tools.Execute(ctx, call.Name, call.Arguments, tools.CallContext{
 				RepoRoot:    sess.RepoRoot,
 				Workdir:     sess.Workdir,
@@ -76,6 +96,10 @@ func (l Loop) Run(ctx context.Context, sess *session.Session, permissions *safet
 			}
 			if strings.TrimSpace(output) == "" {
 				output = "(no output)"
+			}
+
+			if hooks != nil && hooks.OnToolResult != nil {
+				hooks.OnToolResult(call.Name, status, output)
 			}
 
 			sess.AddMessage(session.RoleTool, output, session.WithTool(call.Name, call.ID, status))

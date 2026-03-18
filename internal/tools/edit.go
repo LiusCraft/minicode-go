@@ -70,7 +70,7 @@ func executeEdit(_ context.Context, callCtx CallContext, raw json.RawMessage) (R
 		return Result{Title: "edit", Output: "No changes needed."}, nil
 	}
 
-	summary := fmt.Sprintf("replacements: %d\nold preview: %s\nnew preview: %s", replacements, preview(args.OldString), preview(args.NewString))
+	summary := buildEditConfirmationSummary(replacements, content, updated, args.OldString, args.NewString)
 	if err := callCtx.Permissions.ConfirmEdit(path, summary); err != nil {
 		return Result{}, err
 	}
@@ -78,5 +78,5 @@ func executeEdit(_ context.Context, callCtx CallContext, raw json.RawMessage) (R
 	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
 		return Result{}, fmt.Errorf("write %q: %w", path, err)
 	}
-	return Result{Title: "edit", Output: fmt.Sprintf("Updated %s (%d replacement(s)).", path, replacements)}, nil
+	return Result{Title: "edit", Output: buildEditResultSummary(path, replacements, content, updated)}, nil
 }

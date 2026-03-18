@@ -30,11 +30,17 @@ type Message struct {
 	ToolCalls  []ToolCall
 }
 
+type StreamHandler struct {
+	OnTextDelta   func(string)
+	OnMessageDone func()
+}
+
 type Request struct {
 	Model        string
 	Instructions string
 	Messages     []Message
 	Tools        []ToolDefinition
+	Stream       *StreamHandler
 }
 
 type Result struct {

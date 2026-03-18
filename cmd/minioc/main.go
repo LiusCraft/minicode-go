@@ -110,13 +110,22 @@ func run() int {
 		MaxSteps: cfg.MaxSteps,
 	}
 
-	answer, err := loop.Run(ctx, current, permissionManager, promptText)
+	printer := newStreamPrinter(os.Stdout, os.Stderr)
+	answer, err := loop.Run(ctx, current, permissionManager, promptText, &agent.Hooks{
+		OnAssistantDelta:       printer.AssistantDelta,
+		OnAssistantMessageDone: printer.AssistantMessageDone,
+		OnToolCall:             printer.ToolCall,
+		OnToolResult:           printer.ToolResult,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "run error: %v\n", err)
 		return 1
 	}
 
-	fmt.Println(answer)
+	printer.AssistantMessageDone()
+	if !printer.Streamed() {
+		fmt.Println(answer)
+	}
 	fmt.Fprintf(os.Stderr, "\nsession: %s\n", current.ID)
 	return 0
 }

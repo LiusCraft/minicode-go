@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"minioc/internal/safety"
 )
@@ -39,12 +38,20 @@ func executeWriteFile(_ context.Context, callCtx CallContext, raw json.RawMessag
 		return Result{}, err
 	}
 
-	action := "updated"
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		action = "created"
+	action := "created"
+	before := ""
+	if data, err := os.ReadFile(path); err == nil {
+		action = "updated"
+		before = string(data)
+	} else if !os.IsNotExist(err) {
+		return Result{}, fmt.Errorf("read %q: %w", path, err)
 	}
 
-	summary := fmt.Sprintf("action: %s\nbytes: %d", action, len(args.Content))
+	if action == "updated" && before == args.Content {
+		return Result{Title: "write_file", Output: "No changes needed."}, nil
+	}
+
+	summary := buildWriteConfirmationSummary(action, before, args.Content)
 	if err := callCtx.Permissions.ConfirmWrite(path, summary); err != nil {
 		return Result{}, err
 	}
@@ -56,20 +63,5 @@ func executeWriteFile(_ context.Context, callCtx CallContext, raw json.RawMessag
 		return Result{}, fmt.Errorf("write %q: %w", path, err)
 	}
 
-	return Result{Title: "write_file", Output: fmt.Sprintf("%s %s", capitalize(action), path)}, nil
-}
-
-func preview(text string) string {
-	text = strings.ReplaceAll(text, "\n", "\\n")
-	if len(text) <= 120 {
-		return text
-	}
-	return text[:120] + "..."
-}
-
-func capitalize(text string) string {
-	if text == "" {
-		return text
-	}
-	return strings.ToUpper(text[:1]) + text[1:]
+	return Result{Title: "write_file", Output: buildWriteResultSummary(path, action, before, args.Content)}, nil
 }

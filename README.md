@@ -60,5 +60,7 @@ Useful flags:
 
 1. Replace JSON session storage with SQLite
 2. Add tests for path safety, tool behavior, and loop control
-3. Broaden safe parallel scheduling beyond read-only tools
+3. Broaden safe parallel scheduling beyond read-only tools (see `backlog/finer-tool-scheduling.md`)
 4. Support richer streamed progress metadata for long-running tool steps
+
+Lower-priority feature planning lives under `backlog/`.

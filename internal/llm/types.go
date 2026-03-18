@@ -28,6 +28,7 @@ type Message struct {
 	ToolName   string
 	ToolCallID string
 	ToolCalls  []ToolCall
+	Status     string
 }
 
 type StreamHandler struct {

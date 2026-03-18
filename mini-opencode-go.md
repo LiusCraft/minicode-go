@@ -78,7 +78,7 @@ CLI -> Session Loop -> Prompt Builder -> LLM
 ```text
 cmd/minioc/main.go
 internal/agent/loop.go
-internal/llm/openai.go
+internal/llm/provider/openaicompatible/adapter.go
 internal/tools/registry.go
 internal/tools/read.go
 internal/tools/glob.go
@@ -139,7 +139,7 @@ internal/store/session.go
 
 建议：
 
-- 第一版只包一个 `internal/llm/openai.go`
+- 第一版可以先包一个 `internal/llm/provider/openaicompatible/adapter.go`
 - 在你自己的代码里定义一个小接口，不要让业务层直接依赖 `openai-go` 的具体类型
 - 第一版优先用 `Responses API`
 - 先把非流式 + tool loop 跑通，再补流式

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sort"
 
-	"minioc/internal/llm"
+	"minioc/internal/llm/provider"
 )
 
 type Registry struct {
@@ -27,11 +27,11 @@ func NewRegistry(specs ...Spec) *Registry {
 	return registry
 }
 
-func (r *Registry) Definitions() []llm.ToolDefinition {
-	definitions := make([]llm.ToolDefinition, 0, len(r.order))
+func (r *Registry) Definitions() []provider.ToolDefinition {
+	definitions := make([]provider.ToolDefinition, 0, len(r.order))
 	for _, name := range r.order {
 		spec := r.tools[name]
-		definitions = append(definitions, llm.ToolDefinition{
+		definitions = append(definitions, provider.ToolDefinition{
 			Name:        spec.Name,
 			Description: spec.Description,
 			Parameters:  spec.Parameters,

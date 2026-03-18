@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"minioc/internal/agent/prompt"
 	"minioc/internal/llm"
-	"minioc/internal/prompt"
 	"minioc/internal/safety"
 	"minioc/internal/session"
 	"minioc/internal/store"
@@ -62,7 +62,7 @@ func (l Loop) Run(ctx context.Context, sess *session.Session, permissions *safet
 
 		req := llm.Request{
 			Model:        sess.Model,
-			Instructions: prompt.Build(sess.RepoRoot, sess.Workdir, l.MaxSteps),
+			Instructions: prompt.Build(sess.RepoRoot, sess.Workdir, sess.Model, l.MaxSteps),
 			Messages:     toLLMMessages(sess.Messages),
 			Tools:        l.Tools.Definitions(),
 			Stream:       streamHandler,
@@ -211,6 +211,7 @@ func toLLMMessages(messages []session.Message) []llm.Message {
 			Content:    message.Content,
 			ToolName:   message.ToolName,
 			ToolCallID: message.ToolCallID,
+			Status:     message.Status,
 		}
 		if len(message.ToolCalls) > 0 {
 			item.ToolCalls = make([]llm.ToolCall, 0, len(message.ToolCalls))

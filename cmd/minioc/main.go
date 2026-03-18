@@ -5,12 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"minioc/internal/agent"
 	"minioc/internal/config"
-	"minioc/internal/llm"
+	llmmodels "minioc/internal/llm/models"
+	"minioc/internal/llm/provider"
+	anthropicprovider "minioc/internal/llm/provider/anthropic"
+	openaicompatible "minioc/internal/llm/provider/openaicompatible"
 	"minioc/internal/project"
 	"minioc/internal/safety"
 	"minioc/internal/session"
@@ -30,11 +32,7 @@ func run() int {
 	fs.SetOutput(os.Stderr)
 
 	workdirFlag := fs.String("C", ".", "working directory")
-	modelFlag := fs.String("model", "", "model override")
 	continueFlag := fs.String("continue", "", "continue an existing session by id")
-	maxStepsFlag := fs.Int("max-steps", 1000, "maximum model/tool loop steps")
-	autoApproveFlag := fs.Bool("auto-approve", false, "auto approve bash/edit/write tool calls")
-	tuiFlag := fs.Bool("tui", true, "launch the Bubble Tea TUI")
 	noTUIFlag := fs.Bool("no-tui", false, "run in plain streaming CLI mode")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
@@ -42,7 +40,7 @@ func run() int {
 	}
 
 	promptText := strings.TrimSpace(strings.Join(fs.Args(), " "))
-	useTUI := *tuiFlag && !*noTUIFlag
+	useTUI := !*noTUIFlag
 	if promptText == "" && !useTUI {
 		fmt.Fprintln(os.Stderr, "usage: minioc [flags] \"your prompt\"")
 		fs.PrintDefaults()
@@ -61,17 +59,19 @@ func run() int {
 		return 1
 	}
 
-	cfg, err := config.Load(config.Options{
-		ModelOverride: *modelFlag,
-		MaxSteps:      *maxStepsFlag,
-		AutoApprove:   *autoApproveFlag,
-	})
+	cfg, err := config.Load(repoRoot)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
 		return 1
 	}
 
-	sessionStore := store.NewFileStore(filepath.Join(repoRoot, ".minioc", "sessions"))
+	catalog, err := llmmodels.New(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "model catalog error: %v\n", err)
+		return 1
+	}
+
+	sessionStore := store.NewFileStore(config.SessionsDir(repoRoot))
 
 	var current *session.Session
 	if *continueFlag != "" {
@@ -101,11 +101,19 @@ func run() int {
 		tools.WriteFileTool(),
 	)
 
-	client, err := llm.NewOpenAIClient(cfg.APIKey, cfg.BaseURL)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "llm setup error: %v\n", err)
-		return 1
+	providerRegistry := provider.NewRegistry()
+	for key, providerConfig := range cfg.Providers {
+		switch providerConfig.Type {
+		case "openai-compatible":
+			providerRegistry.Register(key, openaicompatible.New(key, providerConfig))
+		case "anthropic":
+			providerRegistry.Register(key, anthropicprovider.New(key, providerConfig))
+		default:
+			fmt.Fprintf(os.Stderr, "provider setup error: provider %q has unsupported type %q\n", key, providerConfig.Type)
+			return 1
+		}
 	}
+	client := provider.NewClient(providerRegistry, catalog)
 
 	loop := agent.Loop{
 		Client:   client,

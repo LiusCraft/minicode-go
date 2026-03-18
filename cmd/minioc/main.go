@@ -99,6 +99,7 @@ func run() int {
 		tools.BashTool(),
 		tools.EditTool(),
 		tools.WriteFileTool(),
+		tools.FetchTool(),
 	)
 
 	providerRegistry := provider.NewRegistry()

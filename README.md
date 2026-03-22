@@ -39,12 +39,12 @@ Example configuration:
     "openai": {
       "type": "openai-compatible",
       "base_url": "https://api.openai.com/v1",
-      "api_key": { "env": "OPENAI_API_KEY" }
+      "api_key": "{env:OPENAI_API_KEY}"
     },
     "anthropic": {
       "type": "anthropic",
       "base_url": "https://api.anthropic.com",
-      "api_key": { "env": "ANTHROPIC_API_KEY" }
+      "api_key": "{env:ANTHROPIC_API_KEY}"
     }
   },
   "models": {

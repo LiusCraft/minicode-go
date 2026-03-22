@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -22,15 +23,46 @@ type Config struct {
 }
 
 type Provider struct {
-	Type    string       `json:"type"`
-	BaseURL string       `json:"base_url,omitempty"`
-	APIKey  SecretValue  `json:"api_key,omitempty"`
-	Auth    ProviderAuth `json:"auth,omitempty"`
+	Type     string `json:"type"`
+	BaseURL  string `json:"base_url,omitempty"`
+	APIKey   string `json:"api_key,omitempty"`
+	AuthType string `json:"auth_type,omitempty"`
 }
 
-type ProviderAuth struct {
-	Type   string      `json:"type,omitempty"`
-	APIKey SecretValue `json:"api_key,omitempty"`
+func (p Provider) IsAPIKeySet() bool {
+	return strings.TrimSpace(p.APIKey) != ""
+}
+
+func (p Provider) ResolveAPIKey() (string, error) {
+	v := strings.TrimSpace(p.APIKey)
+	if v == "" {
+		return "", fmt.Errorf("provider %q is missing api_key", p.Type)
+	}
+	if strings.HasPrefix(v, "{env:") && strings.HasSuffix(v, "}") {
+		envKey := v[5 : len(v)-1]
+		value := os.Getenv(envKey)
+		if value == "" {
+			return "", fmt.Errorf("provider %q environment variable %q is empty", p.Type, envKey)
+		}
+		return value, nil
+	}
+	return v, nil
+}
+
+func (p Provider) Merge(other Provider) Provider {
+	if other.Type != "" {
+		p.Type = other.Type
+	}
+	if other.BaseURL != "" {
+		p.BaseURL = other.BaseURL
+	}
+	if other.APIKey != "" {
+		p.APIKey = other.APIKey
+	}
+	if other.AuthType != "" {
+		p.AuthType = other.AuthType
+	}
+	return p
 }
 
 type Model struct {
@@ -42,57 +74,157 @@ type Model struct {
 	Temperature     *float64 `json:"temperature,omitempty"`
 }
 
-type SecretValue struct {
-	Value string
-	Env   string
+func (m Model) Merge(other Model) Model {
+	if other.Provider != "" {
+		m.Provider = other.Provider
+	}
+	if other.ID != "" {
+		m.ID = other.ID
+	}
+	if other.ContextWindow != 0 {
+		m.ContextWindow = other.ContextWindow
+	}
+	if other.MaxOutputTokens != 0 {
+		m.MaxOutputTokens = other.MaxOutputTokens
+	}
+	if other.SupportsTools != nil {
+		m.SupportsTools = other.SupportsTools
+	}
+	if other.Temperature != nil {
+		m.Temperature = other.Temperature
+	}
+	return m
 }
 
+// Load loads the configuration with a two-level merge strategy:
+//   - Global config: ~/.config/minioc/minioc.json (or $XDG_CONFIG_HOME/minioc/minioc.json)
+//   - Project config: <repoRoot>/.minioc/minioc.json
+//
+// Global config is loaded first; project config then overlays it.
+// Only fields explicitly set in the project config replace the global values.
+// If a global config does not exist, it is created from the embedded assets default.
 func Load(repoRoot string) (Config, error) {
-	path := ConfigFile(repoRoot)
-	if err := ensureConfigFile(repoRoot, path); err != nil {
+	// Ensure global config exists (create from assets if missing).
+	if err := ensureGlobalConfig(); err != nil {
 		return Config{}, err
 	}
 
+	// Load global config first.
+	globalCfg, err := loadFromFile(GlobalConfigFile())
+	if err != nil {
+		return Config{}, fmt.Errorf("load global config: %w", err)
+	}
+
+	// Load project config if it exists; otherwise start from empty.
+	projectCfg := Config{}
+	projectPath := ConfigFile(repoRoot)
+	if data, err := os.ReadFile(projectPath); err == nil {
+		if err := json.Unmarshal(data, &projectCfg); err != nil {
+			return Config{}, fmt.Errorf("decode project config: %w", err)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return Config{}, fmt.Errorf("read project config: %w", err)
+	}
+
+	// Merge: global is the base, project overlays it.
+	cfg := mergeConfig(globalCfg, projectCfg)
+	cfg.Path = projectPath
+
+	if err := postLoad(&cfg); err != nil {
+		return Config{}, err
+	}
+
+	return cfg, nil
+}
+
+// mergeConfig overlays project onto global, returning a new Config.
+// Project-level fields that are non-zero (or non-empty maps/slices) replace the global ones.
+func mergeConfig(global, project Config) Config {
+	if project.Model != "" {
+		global.Model = project.Model
+	}
+	if project.MaxSteps != 0 {
+		global.MaxSteps = project.MaxSteps
+	}
+	// auto_approve defaults to false, so only copy if explicitly true in project.
+	if project.AutoApprove {
+		global.AutoApprove = true
+	}
+
+	// Merge providers: start with global, then overlay project keys with deep merge.
+	if global.Providers == nil {
+		global.Providers = make(map[string]Provider)
+	}
+	for key, projProvider := range project.Providers {
+		if existing, ok := global.Providers[key]; ok {
+			global.Providers[key] = existing.Merge(projProvider)
+		} else {
+			global.Providers[key] = projProvider
+		}
+	}
+
+	// Merge models: start with global, then overlay project keys with deep merge.
+	if global.Models == nil {
+		global.Models = make(map[string]Model)
+	}
+	for key, projModel := range project.Models {
+		if existing, ok := global.Models[key]; ok {
+			global.Models[key] = existing.Merge(projModel)
+		} else {
+			global.Models[key] = projModel
+		}
+	}
+
+	return global
+}
+
+// loadFromFile reads and unmarshals a JSON config file. Returns empty Config if the file does not exist.
+func loadFromFile(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return Config{}, fmt.Errorf("read %s: %w", ConfigPath, err)
+		if errors.Is(err, os.ErrNotExist) {
+			return Config{}, nil
+		}
+		return Config{}, fmt.Errorf("read %s: %w", path, err)
 	}
-
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return Config{}, fmt.Errorf("decode %s: %w", ConfigPath, err)
+		return Config{}, fmt.Errorf("decode %s: %w", path, err)
 	}
-	cfg.Path = path
+	return cfg, nil
+}
 
+// postLoad validates and normalises a fully-merged Config.
+func postLoad(cfg *Config) error {
 	if cfg.MaxSteps == 0 {
 		cfg.MaxSteps = defaultMaxSteps
 	}
 	if cfg.MaxSteps <= 0 {
-		return Config{}, fmt.Errorf("max_steps must be greater than zero")
+		return fmt.Errorf("max_steps must be greater than zero")
 	}
 	if strings.TrimSpace(cfg.Model) == "" {
-		return Config{}, fmt.Errorf("model is required")
+		return fmt.Errorf("model is required")
 	}
 	if len(cfg.Providers) == 0 {
-		return Config{}, fmt.Errorf("providers must not be empty")
+		return fmt.Errorf("providers must not be empty")
 	}
 	if len(cfg.Models) == 0 {
-		return Config{}, fmt.Errorf("models must not be empty")
+		return fmt.Errorf("models must not be empty")
 	}
 
 	for name, provider := range cfg.Providers {
 		key := strings.TrimSpace(name)
 		if key == "" {
-			return Config{}, fmt.Errorf("provider key must not be empty")
+			return fmt.Errorf("provider key must not be empty")
 		}
 		if strings.Contains(key, "/") {
-			return Config{}, fmt.Errorf("provider key %q must not contain '/'", name)
+			return fmt.Errorf("provider key %q must not contain '/'", name)
 		}
 		if strings.TrimSpace(provider.Type) == "" {
-			return Config{}, fmt.Errorf("provider %q type is required", name)
+			return fmt.Errorf("provider %q type is required", name)
 		}
 		if err := validateProviderAuth(name, provider); err != nil {
-			return Config{}, err
+			return err
 		}
 		provider.Type = strings.TrimSpace(provider.Type)
 		provider.BaseURL = strings.TrimSpace(provider.BaseURL)
@@ -101,92 +233,32 @@ func Load(repoRoot string) (Config, error) {
 
 	for ref, model := range cfg.Models {
 		if strings.TrimSpace(ref) == "" {
-			return Config{}, fmt.Errorf("model reference must not be empty")
+			return fmt.Errorf("model reference must not be empty")
 		}
 		if strings.TrimSpace(model.ID) == "" {
-			return Config{}, fmt.Errorf("model %q id is required", ref)
+			return fmt.Errorf("model %q id is required", ref)
 		}
 		if model.ContextWindow < 0 {
-			return Config{}, fmt.Errorf("model %q context_window must be zero or greater", ref)
+			return fmt.Errorf("model %q context_window must be zero or greater", ref)
 		}
 		if model.MaxOutputTokens < 0 {
-			return Config{}, fmt.Errorf("model %q max_output_tokens must be zero or greater", ref)
+			return fmt.Errorf("model %q max_output_tokens must be zero or greater", ref)
 		}
 		model.Provider = strings.TrimSpace(model.Provider)
 		model.ID = strings.TrimSpace(model.ID)
 		cfg.Models[ref] = model
 	}
 
-	return cfg, nil
-}
-
-func (p Provider) EffectiveAuth() ProviderAuth {
-	if !p.Auth.IsZero() {
-		return p.Auth
-	}
-	if !p.APIKey.IsZero() {
-		return ProviderAuth{Type: "api_key", APIKey: p.APIKey}
-	}
-	return ProviderAuth{}
-}
-
-func (a ProviderAuth) IsZero() bool {
-	return strings.TrimSpace(a.Type) == "" && a.APIKey.IsZero()
-}
-
-func (s SecretValue) IsZero() bool {
-	return strings.TrimSpace(s.Value) == "" && strings.TrimSpace(s.Env) == ""
-}
-
-func (s *SecretValue) UnmarshalJSON(data []byte) error {
-	data = bytesTrimSpace(data)
-	if len(data) == 0 || string(data) == "null" {
-		*s = SecretValue{}
-		return nil
-	}
-
-	if data[0] == '"' {
-		var value string
-		if err := json.Unmarshal(data, &value); err != nil {
-			return err
-		}
-		s.Value = strings.TrimSpace(value)
-		s.Env = ""
-		return nil
-	}
-
-	var raw struct {
-		Value string `json:"value,omitempty"`
-		Env   string `json:"env,omitempty"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return fmt.Errorf("secret value must be a string or object: %w", err)
-	}
-	*s = SecretValue{
-		Value: strings.TrimSpace(raw.Value),
-		Env:   strings.TrimSpace(raw.Env),
-	}
 	return nil
 }
 
 func validateProviderAuth(name string, provider Provider) error {
-	if !provider.APIKey.IsZero() && !provider.Auth.IsZero() {
-		return fmt.Errorf("provider %q cannot set both api_key and auth", name)
+	if !provider.IsAPIKeySet() {
+		return fmt.Errorf("provider %q must configure api_key", name)
 	}
-
-	auth := provider.EffectiveAuth()
-	authType := strings.TrimSpace(auth.Type)
-	if authType == "" {
-		authType = "api_key"
-	}
-	if authType != "api_key" {
-		return fmt.Errorf("provider %q auth type %q is not supported", name, auth.Type)
-	}
-	if auth.APIKey.IsZero() {
-		return fmt.Errorf("provider %q must configure api_key or auth.api_key", name)
-	}
-	if auth.APIKey.Value != "" && auth.APIKey.Env != "" {
-		return fmt.Errorf("provider %q api_key must choose either value or env", name)
+	authType := strings.TrimSpace(provider.AuthType)
+	if authType != "" && authType != "api_key" {
+		return fmt.Errorf("provider %q auth type %q is not supported", name, provider.AuthType)
 	}
 	return nil
 }
@@ -203,26 +275,45 @@ func bytesTrimSpace(data []byte) []byte {
 	return data[start:end]
 }
 
-func ensureConfigFile(repoRoot, configPath string) error {
-	_, err := os.Stat(configPath)
+// ensureGlobalConfig creates the global config file from assets if it does not exist.
+func ensureGlobalConfig() error {
+	path := GlobalConfigFile()
+	_, err := os.Stat(path)
 	if err == nil {
 		return nil
 	}
 	if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("stat %s: %w", ConfigPath, err)
+		return fmt.Errorf("stat global config %s: %w", path, err)
 	}
 
-	defaultPath := AssetsConfigFile(repoRoot)
-	defaultData, err := os.ReadFile(defaultPath)
-	if err != nil {
-		return fmt.Errorf("read default config %s: %w", AssetsConfigPath, err)
+	// Try to use the current binary's asset directory first.
+	execPath, execErr := os.Executable()
+	if execErr == nil {
+		assetsPath := filepath.Join(filepath.Dir(execPath), AssetsDirName, ConfigFileName)
+		if data, readErr := os.ReadFile(assetsPath); readErr == nil {
+			return writeGlobalConfig(path, data)
+		}
 	}
 
-	if err := os.MkdirAll(Root(repoRoot), 0o755); err != nil {
-		return fmt.Errorf("create %s: %w", DirName, err)
+	// Fallback: look relative to the repo root (useful in dev).
+	wd, err := os.Getwd()
+	if err == nil {
+		defaultPath := filepath.Join(wd, AssetsConfigPath)
+		if data, err := os.ReadFile(defaultPath); err == nil {
+			return writeGlobalConfig(path, data)
+		}
 	}
-	if err := os.WriteFile(configPath, defaultData, 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", ConfigPath, err)
+
+	return fmt.Errorf("global config %s does not exist and no default found to create it", path)
+}
+
+func writeGlobalConfig(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create global config dir %s: %w", dir, err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("write global config %s: %w", path, err)
 	}
 	return nil
 }

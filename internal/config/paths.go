@@ -33,6 +33,10 @@ func GlobalConfigFile() string {
 	return filepath.Join(GlobalConfigDir(), ConfigFileName)
 }
 
+func GlobalAgentsFile() string {
+	return filepath.Join(GlobalConfigDir(), "AGENTS.md")
+}
+
 func Root(repoRoot string) string {
 	return filepath.Join(repoRoot, DirName)
 }

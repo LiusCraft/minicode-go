@@ -13,9 +13,10 @@ type Result struct {
 }
 
 type CallContext struct {
-	RepoRoot    string
-	Workdir     string
-	Permissions *safety.PermissionManager
+	RepoRoot     string
+	Workdir      string
+	Instructions []string
+	Permissions  *safety.PermissionManager
 }
 
 type Spec struct {

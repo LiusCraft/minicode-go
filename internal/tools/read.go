@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"minioc/internal/agent/prompt"
 	"minioc/internal/safety"
 )
 
@@ -67,7 +68,14 @@ func executeRead(_ context.Context, callCtx CallContext, raw json.RawMessage) (R
 	if isBinaryFile(resolved) {
 		return Result{}, fmt.Errorf("cannot read binary file: %s", resolved)
 	}
-	return readTextFile(resolved, args.Offset, args.Limit)
+	result, err := readTextFile(resolved, args.Offset, args.Limit)
+	if err != nil {
+		return result, err
+	}
+	if reminder := prompt.ResolveForFile(callCtx.RepoRoot, callCtx.Workdir, resolved, callCtx.Instructions); reminder != "" {
+		result.Output += reminder
+	}
+	return result, nil
 }
 
 func readDirectory(path string, offset, limit int) (Result, error) {

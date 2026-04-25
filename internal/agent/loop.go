@@ -18,10 +18,11 @@ import (
 )
 
 type Loop struct {
-	Client   llm.Client
-	Store    store.Store
-	Tools    *tools.Registry
-	MaxSteps int
+	Client       llm.Client
+	Store        store.Store
+	Tools        *tools.Registry
+	MaxSteps     int
+	Instructions []string
 }
 
 type Hooks struct {
@@ -61,11 +62,15 @@ func (l Loop) Run(ctx context.Context, sess *session.Session, permissions *safet
 		}
 
 		req := llm.Request{
-			Model:        sess.Model,
-			Instructions: prompt.Build(sess.RepoRoot, sess.Workdir, sess.Model, l.MaxSteps),
-			Messages:     toLLMMessages(sess.Messages),
-			Tools:        l.Tools.Definitions(),
-			Stream:       streamHandler,
+			Model: sess.Model,
+			Instructions: prompt.Build(sess.RepoRoot, sess.Model,
+				prompt.WithWorkdir(sess.Workdir),
+				prompt.WithMaxSteps(l.MaxSteps),
+				prompt.WithInstructionPaths(l.Instructions),
+			),
+			Messages: toLLMMessages(sess.Messages),
+			Tools:    l.Tools.Definitions(),
+			Stream:   streamHandler,
 		}
 
 		stepCtx, cancel := context.WithTimeout(ctx, llmStepTimeout)
@@ -93,9 +98,10 @@ func (l Loop) Run(ctx context.Context, sess *session.Session, permissions *safet
 		sess.AddMessage(session.RoleAssistant, strings.TrimSpace(result.Text), session.WithAssistantToolCalls(toSessionToolCalls(result.ToolCalls)))
 
 		executions := l.executeToolCalls(ctx, result.ToolCalls, tools.CallContext{
-			RepoRoot:    sess.RepoRoot,
-			Workdir:     sess.Workdir,
-			Permissions: permissions,
+			RepoRoot:     sess.RepoRoot,
+			Workdir:      sess.Workdir,
+			Instructions: l.Instructions,
+			Permissions:  permissions,
 		}, hooks)
 		for i, call := range result.ToolCalls {
 			execution := executions[i]

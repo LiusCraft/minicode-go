@@ -117,10 +117,11 @@ func run() int {
 	client := provider.NewClient(providerRegistry, catalog)
 
 	loop := agent.Loop{
-		Client:   client,
-		Store:    sessionStore,
-		Tools:    registry,
-		MaxSteps: cfg.MaxSteps,
+		Client:       client,
+		Store:        sessionStore,
+		Tools:        registry,
+		MaxSteps:     cfg.MaxSteps,
+		Instructions: cfg.Instructions,
 	}
 
 	if useTUI {

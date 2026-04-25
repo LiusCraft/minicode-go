@@ -14,12 +14,13 @@ const (
 )
 
 type Config struct {
-	Path        string              `json:"-"`
-	Model       string              `json:"model"`
-	MaxSteps    int                 `json:"max_steps"`
-	AutoApprove bool                `json:"auto_approve"`
-	Providers   map[string]Provider `json:"providers"`
-	Models      map[string]Model    `json:"models"`
+	Path         string              `json:"-"`
+	Model        string              `json:"model"`
+	MaxSteps     int                 `json:"max_steps"`
+	AutoApprove  bool                `json:"auto_approve"`
+	Providers    map[string]Provider `json:"providers"`
+	Models       map[string]Model    `json:"models"`
+	Instructions []string            `json:"instructions"`
 }
 
 type Provider struct {
@@ -173,6 +174,11 @@ func mergeConfig(global, project Config) Config {
 		} else {
 			global.Models[key] = projModel
 		}
+	}
+
+	// Merge instructions: project-level replaces global if non-empty.
+	if len(project.Instructions) > 0 {
+		global.Instructions = project.Instructions
 	}
 
 	return global

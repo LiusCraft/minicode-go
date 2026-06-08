@@ -13,11 +13,13 @@ import (
 	"minioc/internal/llm/provider"
 	anthropicprovider "minioc/internal/llm/provider/anthropic"
 	openaicompatible "minioc/internal/llm/provider/openaicompatible"
+	"minioc/internal/notify"
 	"minioc/internal/project"
 	"minioc/internal/safety"
 	"minioc/internal/session"
-	"minioc/internal/store"
+	"minioc/internal/subagent"
 	"minioc/internal/tools"
+	mcpmanager "minioc/internal/tools/mcp"
 	"minioc/internal/tui"
 )
 
@@ -71,24 +73,12 @@ func run() int {
 		return 1
 	}
 
-	sessionStore := store.NewFileStore(config.SessionsDir(repoRoot))
+	sessionStore := session.NewFileStore(config.SessionsDir(repoRoot))
 
-	var current *session.Session
-	if *continueFlag != "" {
-		current, err = sessionStore.Load(ctx, *continueFlag)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "load session error: %v\n", err)
-			return 1
-		}
-		if current.RepoRoot != "" && current.RepoRoot != repoRoot {
-			fmt.Fprintf(os.Stderr, "session %s belongs to repo %s, not %s\n", current.ID, current.RepoRoot, repoRoot)
-			return 1
-		}
-		current.Workdir = workdir
-		current.RepoRoot = repoRoot
-		current.Model = cfg.Model
-	} else {
-		current = session.New(repoRoot, workdir, cfg.Model)
+	current, err := session.Open(ctx, sessionStore, repoRoot, workdir, cfg.Model, *continueFlag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "session error: %v\n", err)
+		return 1
 	}
 
 	permissionManager := safety.NewPermissionManager(os.Stdin, os.Stderr, cfg.AutoApprove)
@@ -101,6 +91,17 @@ func run() int {
 		tools.WriteFileTool(),
 		tools.FetchTool(),
 	)
+
+	mcpManager := mcpmanager.NewManager()
+	if len(cfg.MCPServers) > 0 {
+		mcpManager.StartAll(ctx, cfg.MCPServers)
+		mcpManager.RegisterTools(ctx, registry)
+	}
+	defer mcpManager.CloseAll()
+
+	notify.On("mcp:server_failed", func(e notify.Event) {
+		registry.UnregisterAll(e.Source + "__")
+	})
 
 	providerRegistry := provider.NewRegistry()
 	for key, providerConfig := range cfg.Providers {
@@ -115,6 +116,23 @@ func run() int {
 		}
 	}
 	client := provider.NewClient(providerRegistry, catalog)
+
+	subagentMgr := subagent.NewManager(
+		client,
+		sessionStore,
+		registry,
+		cfg.Agents,
+		permissionManager,
+		cfg.MaxSteps,
+		repoRoot,
+		workdir,
+		cfg.Model,
+		current.ID,
+	)
+	registry.Register(subagent.SpawnAgentTool(subagentMgr))
+	registry.Register(subagent.ListAgentsTool(subagentMgr))
+	registry.Register(subagent.GetAgentSessionTool(subagentMgr))
+	registry.Register(subagent.KillAgentTool(subagentMgr))
 
 	loop := agent.Loop{
 		Client:       client,
@@ -133,6 +151,7 @@ func run() int {
 			Loop:        loop,
 			Session:     current,
 			AutoApprove: cfg.AutoApprove,
+			SubagentMgr: subagentMgr,
 		}); err != nil {
 			fmt.Fprintf(os.Stderr, "tui error: %v\n", err)
 			return 1

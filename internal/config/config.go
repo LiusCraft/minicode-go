@@ -10,17 +10,37 @@ import (
 )
 
 const (
-	defaultMaxSteps = 1000
+	defaultMaxSteps = 10000
 )
 
+type AgentConfig struct {
+	Description  string   `json:"description"`
+	Prompt       string   `json:"prompt,omitempty"`
+	Instructions []string `json:"instructions,omitempty"`
+	Tools        []string `json:"tools,omitempty"`
+	MaxSteps     int      `json:"max_steps,omitempty"`
+}
+
 type Config struct {
-	Path         string              `json:"-"`
-	Model        string              `json:"model"`
-	MaxSteps     int                 `json:"max_steps"`
-	AutoApprove  bool                `json:"auto_approve"`
-	Providers    map[string]Provider `json:"providers"`
-	Models       map[string]Model    `json:"models"`
-	Instructions []string            `json:"instructions"`
+	Path         string                 `json:"-"`
+	Model        string                 `json:"model"`
+	MaxSteps     int                    `json:"max_steps"`
+	AutoApprove  bool                   `json:"auto_approve"`
+	Providers    map[string]Provider    `json:"providers"`
+	Models       map[string]Model       `json:"models"`
+	MCPServers   map[string]MCPServer   `json:"mcp_servers,omitempty"`
+	Instructions []string               `json:"instructions"`
+	Agents       map[string]AgentConfig `json:"agents,omitempty"`
+}
+
+type MCPServer struct {
+	Transport       string            `json:"transport"`
+	Command         string            `json:"command,omitempty"`
+	Args            []string          `json:"args,omitempty"`
+	Env             map[string]string `json:"env,omitempty"`
+	URL             string            `json:"url,omitempty"`
+	Headers         map[string]string `json:"headers,omitempty"`
+	MessageEndpoint string            `json:"message_endpoint,omitempty"`
 }
 
 type Provider struct {
@@ -95,6 +115,25 @@ func (m Model) Merge(other Model) Model {
 		m.Temperature = other.Temperature
 	}
 	return m
+}
+
+func (a AgentConfig) Merge(other AgentConfig) AgentConfig {
+	if other.Description != "" {
+		a.Description = other.Description
+	}
+	if other.Prompt != "" {
+		a.Prompt = other.Prompt
+	}
+	if len(other.Instructions) > 0 {
+		a.Instructions = other.Instructions
+	}
+	if len(other.Tools) > 0 {
+		a.Tools = other.Tools
+	}
+	if other.MaxSteps != 0 {
+		a.MaxSteps = other.MaxSteps
+	}
+	return a
 }
 
 // Load loads the configuration with a two-level merge strategy:
@@ -181,6 +220,23 @@ func mergeConfig(global, project Config) Config {
 		global.Instructions = project.Instructions
 	}
 
+	// Merge MCP servers: project-level replaces global if non-empty.
+	if len(project.MCPServers) > 0 {
+		global.MCPServers = project.MCPServers
+	}
+
+	// Merge agents: project overlays global with per-key deep merge.
+	if global.Agents == nil {
+		global.Agents = make(map[string]AgentConfig)
+	}
+	for key, projAgent := range project.Agents {
+		if existing, ok := global.Agents[key]; ok {
+			global.Agents[key] = existing.Merge(projAgent)
+		} else {
+			global.Agents[key] = projAgent
+		}
+	}
+
 	return global
 }
 
@@ -235,6 +291,40 @@ func postLoad(cfg *Config) error {
 		provider.Type = strings.TrimSpace(provider.Type)
 		provider.BaseURL = strings.TrimSpace(provider.BaseURL)
 		cfg.Providers[name] = provider
+	}
+
+	for name, mcpSvr := range cfg.MCPServers {
+		key := strings.TrimSpace(name)
+		if key == "" {
+			return fmt.Errorf("mcp_server key must not be empty")
+		}
+		transport := strings.TrimSpace(mcpSvr.Transport)
+		if transport == "" {
+			return fmt.Errorf("mcp_server %q transport is required", name)
+		}
+		switch transport {
+		case "stdio":
+			if mcpSvr.Command == "" {
+				return fmt.Errorf("mcp_server %q stdio requires command", name)
+			}
+		case "streamable-http":
+			if mcpSvr.URL == "" {
+				return fmt.Errorf("mcp_server %q streamable-http requires url", name)
+			}
+		case "sse":
+			if mcpSvr.URL == "" {
+				return fmt.Errorf("mcp_server %q sse requires url", name)
+			}
+		default:
+			return fmt.Errorf("mcp_server %q unsupported transport %q", name, transport)
+		}
+		cfg.MCPServers[name] = mcpSvr
+	}
+
+	for name := range cfg.Agents {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("agent key must not be empty")
+		}
 	}
 
 	for ref, model := range cfg.Models {

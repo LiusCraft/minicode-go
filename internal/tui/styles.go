@@ -44,6 +44,7 @@ func newStyles() styles {
 		errorText:        lipgloss.NewStyle().Background(bg).Foreground(coral).Bold(true),
 		warningText:      lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#F4C96B")).Bold(true),
 		composerFill:     lipgloss.NewStyle().Background(bg),
+		subagentFill:     lipgloss.NewStyle().Background(lipgloss.Color("#0A3640")),
 		inputPrompt:      lipgloss.NewStyle().Background(bg).Foreground(line).Bold(true),
 		inputText:        lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#C6D1D2")),
 		inputPlaceholder: lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#6D868A")),

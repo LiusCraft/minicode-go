@@ -1,4 +1,4 @@
-package store
+package session
 
 import (
 	"context"
@@ -6,13 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"minioc/internal/session"
 )
 
 type Store interface {
-	Load(ctx context.Context, id string) (*session.Session, error)
-	Save(ctx context.Context, sess *session.Session) error
+	Load(ctx context.Context, id string) (*Session, error)
+	Save(ctx context.Context, sess *Session) error
 }
 
 type FileStore struct {
@@ -23,7 +21,7 @@ func NewFileStore(dir string) *FileStore {
 	return &FileStore{dir: dir}
 }
 
-func (s *FileStore) Load(ctx context.Context, id string) (*session.Session, error) {
+func (s *FileStore) Load(ctx context.Context, id string) (*Session, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -34,14 +32,14 @@ func (s *FileStore) Load(ctx context.Context, id string) (*session.Session, erro
 		return nil, fmt.Errorf("read session %q: %w", id, err)
 	}
 
-	var sess session.Session
+	var sess Session
 	if err := json.Unmarshal(data, &sess); err != nil {
 		return nil, fmt.Errorf("decode session %q: %w", id, err)
 	}
 	return &sess, nil
 }
 
-func (s *FileStore) Save(ctx context.Context, sess *session.Session) error {
+func (s *FileStore) Save(ctx context.Context, sess *Session) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}

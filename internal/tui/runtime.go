@@ -9,12 +9,27 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"minioc/internal/notify"
 	"minioc/internal/safety"
 	"minioc/internal/session"
 )
 
 func Run(cfg Config) error {
 	m := newModel(cfg)
+
+	if cfg.SubagentMgr != nil {
+		m.subagentMgr = cfg.SubagentMgr
+		// Use TUI callback-based permissions so subagent requests don't deadlock on stdin
+		subPerm := safety.NewCallbackPermissionManager(cfg.AutoApprove,
+			func(kind, summary string) error {
+				return m.requestPermission(kind, "Subagent: "+summary)
+			})
+		cfg.SubagentMgr.SetPermissions(subPerm)
+		notify.On("subagent:*", func(e notify.Event) {
+			m.emit(subagentUpdateMsg{})
+		})
+	}
+
 	p := tea.NewProgram(m)
 	_, err := p.Run()
 	m.stop()
@@ -32,7 +47,6 @@ func newModel(cfg Config) *model {
 	vp := viewport.New()
 	vp.SoftWrap = true
 	vp.FillHeight = false
-	vp.MouseWheelEnabled = true
 	vp.Style = lipgloss.NewStyle().Background(lipgloss.Color("#052B33")).Foreground(lipgloss.Color("#A8B7B8"))
 	inputBox := textarea.New()
 	inputBox.Prompt = "> "
@@ -118,12 +132,19 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, waitExternalCmd(m.externalEvents))
 
 	case permissionRequestMsg:
+		if m.pendingPermission != nil {
+			break // already waiting for user, don't overwrite
+		}
 		m.pendingPermission = &permissionPrompt{Kind: msg.Kind, Summary: msg.Summary, Reply: msg.Reply}
 		m.statusText = "Waiting for permission approval"
-		cmds = append(cmds, waitExternalCmd(m.externalEvents))
+		// Don't add waitExternalCmd: chain stops until user responds
+		// Next permission requests stay in channel, processed after approval
 
 	case runFinishedMsg:
 		m.finishRun(msg)
+		cmds = append(cmds, waitExternalCmd(m.externalEvents))
+
+	case subagentUpdateMsg:
 		cmds = append(cmds, waitExternalCmd(m.externalEvents))
 
 	case tea.KeyPressMsg:
@@ -134,12 +155,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Batch(cmds...)
 		}
-	}
-
-	if mouseMsg, ok := msg.(tea.MouseMsg); ok {
-		var cmd tea.Cmd
-		m.viewport, cmd = m.viewport.Update(mouseMsg)
-		cmds = append(cmds, cmd)
 	}
 
 	if m.pendingPermission == nil {
@@ -169,14 +184,20 @@ func (m *model) View() tea.View {
 	rule := m.renderRule(innerWidth)
 	content := m.viewport.View()
 	composer := m.renderComposer(innerWidth)
+	subagentPanel := m.renderSubagentPanel(innerWidth)
 	footer := m.renderFooter(innerWidth)
-	body := lipgloss.JoinVertical(lipgloss.Left, header, rule, content, rule, composer, rule, footer)
+
+	bodyParts := []string{header, rule, content}
+	if subagentPanel != "" {
+		bodyParts = append(bodyParts, subagentPanel)
+	}
+	bodyParts = append(bodyParts, rule, composer, rule, footer)
+	body := lipgloss.JoinVertical(lipgloss.Left, bodyParts...)
 	body = lipgloss.NewStyle().Padding(1, 2).Background(lipgloss.Color("#052B33")).Render(body)
 	screen := lipgloss.Place(m.width, m.height, lipgloss.Left, lipgloss.Top, body, lipgloss.WithWhitespaceStyle(m.styles.screen))
 
-	v := tea.NewView(screen)
+	v := tea.NewView("\033[?1007h" + screen)
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
 	v.WindowTitle = "minioc TUI"
 	return v
 }
@@ -198,9 +219,18 @@ func (m *model) syncLayout() {
 	header := m.renderHeader(innerWidth)
 	composer := m.renderComposer(innerWidth)
 	footer := m.renderFooter(innerWidth)
-	rulesHeight := 3
+	subagentHeight := 0
+	extraRules := 0
+	if m.subagentMgr != nil && m.focusAgent == "" {
+		agents := m.subagentMgr.Agents()
+		if len(agents) > 0 {
+			subagentHeight = len(agents) + 1
+			extraRules = 1
+		}
+	}
+	rulesHeight := 3 + extraRules
 	paddingHeight := 2
-	available := m.height - lipgloss.Height(header) - lipgloss.Height(composer) - lipgloss.Height(footer) - rulesHeight - paddingHeight
+	available := m.height - lipgloss.Height(header) - lipgloss.Height(composer) - lipgloss.Height(footer) - rulesHeight - paddingHeight - subagentHeight
 	if available < 6 {
 		available = 6
 	}

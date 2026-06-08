@@ -14,6 +14,7 @@ import (
 	"minioc/internal/llm"
 	"minioc/internal/safety"
 	"minioc/internal/session"
+	"minioc/internal/subagent"
 )
 
 type Config struct {
@@ -24,6 +25,7 @@ type Config struct {
 	Loop        agent.Loop
 	Session     *session.Session
 	AutoApprove bool
+	SubagentMgr *subagent.Manager
 }
 
 type sceneKind int
@@ -65,6 +67,8 @@ type runFinishedMsg struct {
 	Answer string
 	Err    error
 }
+
+type subagentUpdateMsg struct{}
 
 type permissionRequestMsg struct {
 	Kind    string
@@ -142,6 +146,9 @@ type model struct {
 	pendingPermission *permissionPrompt
 	showHistory       bool
 	showLatestDetails bool
+	subagentMgr       *subagent.Manager
+	focusAgent        string // subagent ID being viewed in detail; empty = main conversation
+	subagentIdx       int    // index of selected subagent in the fork panel
 }
 
 type styles struct {
@@ -176,6 +183,7 @@ type styles struct {
 	errorText        lipgloss.Style
 	warningText      lipgloss.Style
 	composerFill     lipgloss.Style
+	subagentFill     lipgloss.Style
 	inputPrompt      lipgloss.Style
 	inputText        lipgloss.Style
 	inputPlaceholder lipgloss.Style

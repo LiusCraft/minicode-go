@@ -7,6 +7,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"minioc/internal/session"
 )
 
 func (m *model) renderCompactView() tea.View {
@@ -21,7 +23,7 @@ func (m *model) renderCompactView() tea.View {
 	}
 	body := lipgloss.NewStyle().Padding(1, 2).Background(lipgloss.Color("#052B33")).Render(strings.Join(lines, "\n"))
 	screen := lipgloss.Place(m.compactW, m.compactH, lipgloss.Left, lipgloss.Top, body, lipgloss.WithWhitespaceStyle(m.styles.screen))
-	v := tea.NewView(screen)
+	v := tea.NewView("\033[?1007h" + screen)
 	v.AltScreen = true
 	v.WindowTitle = "minioc TUI"
 	return v
@@ -94,12 +96,7 @@ func (m *model) renderComposer(width int) string {
 
 func (m *model) renderFooter(width int) string {
 	left := m.styles.footer.Render(filepath.Base(m.displayPath())) + m.spaceFill(1, m.styles.screenFill) + m.styles.footerAccent.Render("("+m.statusText+")")
-	right := m.styles.footerMuted.Render("enter send  |  ctrl+j newline  |  ctrl+o history  |  ctrl+t details  |  pgup/down scroll  |  esc stop")
-	gap := width - lipgloss.Width(left) - lipgloss.Width(right)
-	if gap < 1 {
-		return m.fillLine(left+m.spaceFill(1, m.styles.screenFill)+right, width, m.styles.screenFill)
-	}
-	return left + m.spaceFill(gap, m.styles.screenFill) + right
+	return m.fillLine(left, width, m.styles.screenFill)
 }
 
 func (m *model) renderSceneContent(width, height int) string {
@@ -111,6 +108,9 @@ func (m *model) renderSceneContent(width, height int) string {
 }
 
 func (m *model) renderSessionScene(width int) string {
+	if m.focusAgent != "" && m.subagentMgr != nil {
+		return m.renderSubagentDetail(width)
+	}
 	blocks := []string{}
 	if len(m.turns) == 0 && strings.TrimSpace(m.assistantDraft) == "" {
 		blocks = append(blocks,
@@ -172,6 +172,76 @@ func (m *model) renderPermissionScene(width, height int) string {
 		Foreground(lipgloss.Color("#A8B7B8")).
 		Render(body)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, card, lipgloss.WithWhitespaceStyle(m.styles.screenFill))
+}
+
+func (m *model) renderSubagentPanel(width int) string {
+	if m.subagentMgr == nil || m.focusAgent != "" {
+		return ""
+	}
+	agents := m.subagentMgr.Agents()
+	if len(agents) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for i, a := range agents {
+		icon := "●"
+		switch a.Status {
+		case "completed":
+			icon = "✓"
+		case "error":
+			icon = "✗"
+		}
+		shortID := a.AgentID
+		if len(shortID) > 8 {
+			shortID = shortID[len(shortID)-8:]
+		}
+		sel := " "
+		if i == m.subagentIdx {
+			sel = "▶"
+		}
+		sb.WriteString(fmt.Sprintf(" %s%s %s [%s]  steps=%d  %dms\n",
+			sel, icon, shortID, a.AgentType, a.StepCount, a.ElapsedMillis))
+	}
+	return m.fillBlock(sb.String(), width, len(agents), m.styles.subagentFill)
+}
+
+func (m *model) renderSubagentDetail(width int) string {
+	sess := m.subagentMgr.GetAgent(m.focusAgent)
+	if sess == nil {
+		m.focusAgent = ""
+		return ""
+	}
+	var sb strings.Builder
+	shortID := m.focusAgent
+	if len(shortID) > 12 {
+		shortID = shortID[len(shortID)-12:]
+	}
+	sb.WriteString(fmt.Sprintf("Subagent %s  (Esc back | x kill)\n\n", shortID))
+	for _, msg := range sess.Messages {
+		var prefix string
+		switch msg.Role {
+		case session.RoleUser:
+			prefix = "  > "
+		case session.RoleAssistant:
+			prefix = "  · "
+		case session.RoleTool:
+			prefix = "  ◆ "
+			if msg.ToolName != "" {
+				prefix = fmt.Sprintf("  ◆ %s ", msg.ToolName)
+			}
+		}
+		content := msg.Content
+		if len(content) > width-10 {
+			content = content[:width-10] + "..."
+		}
+		if content != "" {
+			sb.WriteString(fmt.Sprintf("%s%s\n", prefix, content))
+		}
+	}
+	if sb.Len() == 0 {
+		sb.WriteString("(no messages yet)")
+	}
+	return sb.String()
 }
 
 func (m *model) renderPromptPreview(width int, text string) string {

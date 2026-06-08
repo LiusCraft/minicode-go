@@ -102,6 +102,29 @@ func TestRegistryIsParallelSafe(t *testing.T) {
 	}
 }
 
+func TestRegistryGetSpec(t *testing.T) {
+	registry := NewRegistry(Spec{Name: "my_tool", Description: "does stuff"})
+	spec, ok := registry.GetSpec("my_tool")
+	if !ok {
+		t.Fatal("expected to find my_tool")
+	}
+	if spec.Description != "does stuff" {
+		t.Errorf("Description: got %q", spec.Description)
+	}
+	_, ok = registry.GetSpec("nonexistent")
+	if ok {
+		t.Error("expected false for nonexistent tool")
+	}
+}
+
+func TestRegistryNames(t *testing.T) {
+	registry := NewRegistry(Spec{Name: "z"}, Spec{Name: "a"})
+	names := registry.Names()
+	if len(names) != 2 || names[0] != "a" || names[1] != "z" {
+		t.Errorf("Names: got %v", names)
+	}
+}
+
 // ─── objectSchema ──────────────────────────────────────────────────────────────
 
 func TestObjectSchema(t *testing.T) {

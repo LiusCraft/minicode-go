@@ -145,6 +145,33 @@ func (m *model) renderSessionScene(width int) string {
 	if m.running {
 		blocks = append(blocks, m.renderMetaParagraph(width, m.spinnerFrame()+" ", m.styles.running, m.statusText))
 	}
+	if m.subagentMgr != nil {
+		agents := m.subagentMgr.Agents()
+		if len(agents) > 0 {
+			var sb strings.Builder
+			sb.WriteString("\n  ── Subagents ──\n")
+			for _, a := range agents {
+				var statusColor string
+				switch a.Status {
+				case "running":
+					statusColor = "●"
+				case "completed":
+					statusColor = "✓"
+				case "error":
+					statusColor = "✗"
+				default:
+					statusColor = "●"
+				}
+				shortID := a.AgentID
+				if len(shortID) > 8 {
+					shortID = shortID[len(shortID)-8:]
+				}
+				sb.WriteString(fmt.Sprintf("  %s %s [%s]  steps=%d  %dms\n",
+					statusColor, shortID, a.AgentType, a.StepCount, a.ElapsedMillis))
+			}
+			blocks = append(blocks, lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(sb.String()))
+		}
+	}
 	if m.lastError != "" {
 		blocks = append(blocks, m.renderMetaParagraph(width, "!! ", m.styles.errorText, m.lastError))
 	}

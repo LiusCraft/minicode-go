@@ -9,12 +9,22 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"minioc/internal/notify"
 	"minioc/internal/safety"
 	"minioc/internal/session"
 )
 
 func Run(cfg Config) error {
 	m := newModel(cfg)
+
+	if cfg.SubagentMgr != nil {
+		m.subagentMgr = cfg.SubagentMgr
+		notify.On("subagent:*", func(e notify.Event) {
+			m.subagents = m.subagentMgr.Agents()
+			m.emit(subagentUpdateMsg{})
+		})
+	}
+
 	p := tea.NewProgram(m)
 	_, err := p.Run()
 	m.stop()
@@ -124,6 +134,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case runFinishedMsg:
 		m.finishRun(msg)
+		cmds = append(cmds, waitExternalCmd(m.externalEvents))
+
+	case subagentUpdateMsg:
 		cmds = append(cmds, waitExternalCmd(m.externalEvents))
 
 	case tea.KeyPressMsg:

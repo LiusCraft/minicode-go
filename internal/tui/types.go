@@ -14,6 +14,7 @@ import (
 	"minioc/internal/llm"
 	"minioc/internal/safety"
 	"minioc/internal/session"
+	"minioc/internal/subagent"
 )
 
 type Config struct {
@@ -24,6 +25,7 @@ type Config struct {
 	Loop        agent.Loop
 	Session     *session.Session
 	AutoApprove bool
+	SubagentMgr *subagent.Manager
 }
 
 type sceneKind int
@@ -65,6 +67,8 @@ type runFinishedMsg struct {
 	Answer string
 	Err    error
 }
+
+type subagentUpdateMsg struct{}
 
 type permissionRequestMsg struct {
 	Kind    string
@@ -142,6 +146,9 @@ type model struct {
 	pendingPermission *permissionPrompt
 	showHistory       bool
 	showLatestDetails bool
+	subagentMgr       *subagent.Manager
+	subagents         []subagent.AgentInfo
+	focusAgent        string
 }
 
 type styles struct {

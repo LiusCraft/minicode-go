@@ -151,6 +151,7 @@ func run() int {
 			Loop:        loop,
 			Session:     current,
 			AutoApprove: cfg.AutoApprove,
+			SubagentMgr: subagentMgr,
 		}); err != nil {
 			fmt.Fprintf(os.Stderr, "tui error: %v\n", err)
 			return 1

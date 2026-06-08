@@ -261,6 +261,10 @@ func (m *Manager) Kill(agentID string) error {
 	return nil
 }
 
+func (m *Manager) SetPermissions(perm *safety.PermissionManager) {
+	m.permissions = perm
+}
+
 func (m *Manager) AgentConfigs() map[string]config.AgentConfig {
 	result := make(map[string]config.AgentConfig, len(m.agentCfgs))
 	for k, v := range m.agentCfgs {

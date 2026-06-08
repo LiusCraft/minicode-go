@@ -122,7 +122,7 @@ func run() int {
 		sessionStore,
 		registry,
 		cfg.Agents,
-		safety.NewPermissionManager(nil, nil, true), // subagents always auto-approve
+		permissionManager,
 		cfg.MaxSteps,
 		repoRoot,
 		workdir,

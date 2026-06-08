@@ -19,6 +19,12 @@ func Run(cfg Config) error {
 
 	if cfg.SubagentMgr != nil {
 		m.subagentMgr = cfg.SubagentMgr
+		// Use TUI callback-based permissions so subagent requests don't deadlock on stdin
+		subPerm := safety.NewCallbackPermissionManager(cfg.AutoApprove,
+			func(kind, summary string) error {
+				return m.requestPermission(kind, "Subagent: "+summary)
+			})
+		cfg.SubagentMgr.SetPermissions(subPerm)
 		notify.On("subagent:*", func(e notify.Event) {
 			m.emit(subagentUpdateMsg{})
 		})
@@ -177,11 +183,11 @@ func (m *model) View() tea.View {
 	subagentPanel := m.renderSubagentPanel(innerWidth)
 	footer := m.renderFooter(innerWidth)
 
-	bodyParts := []string{header, rule, content, rule, composer}
+	bodyParts := []string{header, rule, content}
 	if subagentPanel != "" {
-		bodyParts = append(bodyParts, subagentPanel, rule)
+		bodyParts = append(bodyParts, subagentPanel)
 	}
-	bodyParts = append(bodyParts, footer)
+	bodyParts = append(bodyParts, rule, composer, rule, footer)
 	body := lipgloss.JoinVertical(lipgloss.Left, bodyParts...)
 	body = lipgloss.NewStyle().Padding(1, 2).Background(lipgloss.Color("#052B33")).Render(body)
 	screen := lipgloss.Place(m.width, m.height, lipgloss.Left, lipgloss.Top, body, lipgloss.WithWhitespaceStyle(m.styles.screen))
@@ -211,7 +217,7 @@ func (m *model) syncLayout() {
 	footer := m.renderFooter(innerWidth)
 	subagentHeight := 0
 	extraRules := 0
-	if m.subagentMgr != nil {
+	if m.subagentMgr != nil && m.focusAgent == "" {
 		agents := m.subagentMgr.Agents()
 		if len(agents) > 0 {
 			subagentHeight = len(agents) + 1

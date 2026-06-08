@@ -169,6 +169,33 @@ func (m *model) renderPermissionScene(width, height int) string {
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, card, lipgloss.WithWhitespaceStyle(m.styles.screenFill))
 }
 
+func (m *model) renderSubagentPanel(width int) string {
+	if m.subagentMgr == nil {
+		return ""
+	}
+	agents := m.subagentMgr.Agents()
+	if len(agents) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for _, a := range agents {
+		icon := "●"
+		switch a.Status {
+		case "completed":
+			icon = "✓"
+		case "error":
+			icon = "✗"
+		}
+		shortID := a.AgentID
+		if len(shortID) > 8 {
+			shortID = shortID[len(shortID)-8:]
+		}
+		sb.WriteString(fmt.Sprintf("  %s %s [%s]  steps=%d  %dms\n",
+			icon, shortID, a.AgentType, a.StepCount, a.ElapsedMillis))
+	}
+	return m.fillBlock(sb.String(), width, len(agents), m.styles.subagentFill)
+}
+
 func (m *model) renderPromptPreview(width int, text string) string {
 	prefix := m.styles.promptPrefix.Render("  > ")
 	contentWidth := max(1, width-lipgloss.Width(prefix)-1)

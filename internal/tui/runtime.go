@@ -174,8 +174,15 @@ func (m *model) View() tea.View {
 	rule := m.renderRule(innerWidth)
 	content := m.viewport.View()
 	composer := m.renderComposer(innerWidth)
+	subagentPanel := m.renderSubagentPanel(innerWidth)
 	footer := m.renderFooter(innerWidth)
-	body := lipgloss.JoinVertical(lipgloss.Left, header, rule, content, rule, composer, rule, footer)
+
+	bodyParts := []string{header, rule, content, rule, composer}
+	if subagentPanel != "" {
+		bodyParts = append(bodyParts, subagentPanel, rule)
+	}
+	bodyParts = append(bodyParts, footer)
+	body := lipgloss.JoinVertical(lipgloss.Left, bodyParts...)
 	body = lipgloss.NewStyle().Padding(1, 2).Background(lipgloss.Color("#052B33")).Render(body)
 	screen := lipgloss.Place(m.width, m.height, lipgloss.Left, lipgloss.Top, body, lipgloss.WithWhitespaceStyle(m.styles.screen))
 
@@ -202,9 +209,18 @@ func (m *model) syncLayout() {
 	header := m.renderHeader(innerWidth)
 	composer := m.renderComposer(innerWidth)
 	footer := m.renderFooter(innerWidth)
-	rulesHeight := 3
+	subagentHeight := 0
+	extraRules := 0
+	if m.subagentMgr != nil {
+		agents := m.subagentMgr.Agents()
+		if len(agents) > 0 {
+			subagentHeight = len(agents) + 1
+			extraRules = 1
+		}
+	}
+	rulesHeight := 3 + extraRules
 	paddingHeight := 2
-	available := m.height - lipgloss.Height(header) - lipgloss.Height(composer) - lipgloss.Height(footer) - rulesHeight - paddingHeight
+	available := m.height - lipgloss.Height(header) - lipgloss.Height(composer) - lipgloss.Height(footer) - rulesHeight - paddingHeight - subagentHeight
 	if available < 6 {
 		available = 6
 	}

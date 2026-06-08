@@ -181,6 +181,7 @@ type styles struct {
 	errorText        lipgloss.Style
 	warningText      lipgloss.Style
 	composerFill     lipgloss.Style
+	subagentFill     lipgloss.Style
 	inputPrompt      lipgloss.Style
 	inputText        lipgloss.Style
 	inputPlaceholder lipgloss.Style

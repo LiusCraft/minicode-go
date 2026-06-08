@@ -35,7 +35,23 @@ func (m *model) handleKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	case "ctrl+t":
 		m.showLatestDetails = !m.showLatestDetails
 		return true, nil
+	case "ctrl+s":
+		if m.subagentMgr != nil {
+			m.cycleSubagentFocus()
+		}
+		return true, nil
+	case "ctrl+k":
+		if m.focusAgent != "" && m.subagentMgr != nil {
+			m.subagentMgr.Kill(m.focusAgent)
+			m.focusAgent = ""
+			m.statusText = "Subagent killed"
+		}
+		return true, nil
 	case "esc":
+		if m.focusAgent != "" {
+			m.focusAgent = ""
+			return true, nil
+		}
 		if m.running && m.runCancel != nil {
 			m.runCancel()
 			m.statusText = "Interrupt requested"
@@ -87,6 +103,32 @@ func (m *model) resetInputBox() {
 	m.inputBox.Reset()
 	m.updateInputBoxLayout(max(10, m.viewport.Width()+2))
 	m.inputBox.Focus()
+}
+
+func (m *model) cycleSubagentFocus() {
+	agents := m.subagentMgr.Agents()
+	if len(agents) == 0 {
+		return
+	}
+	if m.focusAgent == "" {
+		m.focusAgent = agents[0].AgentID
+		m.statusText = fmt.Sprintf("Viewing subagent %s", m.focusAgent)
+		return
+	}
+	for i, a := range agents {
+		if a.AgentID == m.focusAgent {
+			if i+1 < len(agents) {
+				m.focusAgent = agents[i+1].AgentID
+				m.statusText = fmt.Sprintf("Viewing subagent %s", m.focusAgent)
+			} else {
+				m.focusAgent = ""
+				m.statusText = "Ready"
+			}
+			return
+		}
+	}
+	m.focusAgent = agents[0].AgentID
+	m.statusText = fmt.Sprintf("Viewing subagent %s", m.focusAgent)
 }
 
 func (m *model) updateInputBoxLayout(innerWidth int) {

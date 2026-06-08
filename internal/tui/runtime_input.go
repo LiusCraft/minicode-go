@@ -12,10 +12,10 @@ func (m *model) handleKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		switch msg.String() {
 		case "y", "enter":
 			m.resolvePermission(nil)
-			return true, nil
+			return true, waitExternalCmd(m.externalEvents)
 		case "n", "esc":
 			m.resolvePermission(fmt.Errorf("permission denied"))
-			return true, nil
+			return true, waitExternalCmd(m.externalEvents)
 		case "ctrl+c":
 			m.resolvePermission(fmt.Errorf("permission denied"))
 			m.stop()

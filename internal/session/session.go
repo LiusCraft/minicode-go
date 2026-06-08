@@ -36,6 +36,7 @@ type ToolCall struct {
 
 type Session struct {
 	ID        string    `json:"id"`
+	ParentID  string    `json:"parent_id,omitempty"`
 	RepoRoot  string    `json:"repo_root"`
 	Workdir   string    `json:"workdir"`
 	Model     string    `json:"model"`
@@ -77,6 +78,13 @@ func New(repoRoot, workdir, model string) *Session {
 		UpdatedAt: now,
 		Messages:  make([]Message, 0, 8),
 	}
+}
+
+func NewSubagent(repoRoot, workdir, model, parentID string) *Session {
+	sess := New(repoRoot, workdir, model)
+	sess.ID = newID("subagent")
+	sess.ParentID = parentID
+	return sess
 }
 
 func (s *Session) AddMessage(role Role, content string, opts ...MessageOption) Message {

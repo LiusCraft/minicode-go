@@ -35,6 +35,25 @@ func TestNewSession(t *testing.T) {
 	}
 }
 
+func TestNewSubagent(t *testing.T) {
+	sess := NewSubagent("/repo", "/repo/src", "gpt-4", "sess_parent123")
+	if !strings.HasPrefix(sess.ID, "subagent_") {
+		t.Errorf("expected prefix 'subagent_', got %q", sess.ID)
+	}
+	if sess.ParentID != "sess_parent123" {
+		t.Errorf("ParentID: got %q, want %q", sess.ParentID, "sess_parent123")
+	}
+	if sess.RepoRoot != "/repo" {
+		t.Errorf("RepoRoot: got %q", sess.RepoRoot)
+	}
+	if sess.Model != "gpt-4" {
+		t.Errorf("Model: got %q", sess.Model)
+	}
+	if len(sess.Messages) != 0 {
+		t.Errorf("expected empty messages")
+	}
+}
+
 func TestSessionAddMessageUser(t *testing.T) {
 	sess := New("/repo", "/repo", "gpt-4")
 	msg := sess.AddMessage(RoleUser, "hello world")

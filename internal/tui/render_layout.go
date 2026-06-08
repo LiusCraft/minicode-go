@@ -140,17 +140,6 @@ func (m *model) renderSessionScene(width int) string {
 	if m.running {
 		blocks = append(blocks, m.renderMetaParagraph(width, m.spinnerFrame()+" ", m.styles.running, m.statusText))
 	}
-	if m.subagentMgr != nil {
-		agents := m.subagentMgr.Agents()
-		if len(agents) > 0 {
-			var parts []string
-			for _, a := range agents {
-				parts = append(parts, fmt.Sprintf("sub:%s", a.AgentType))
-			}
-			label := fmt.Sprintf("  ⟳ %s", strings.Join(parts, "  "))
-			blocks = append(blocks, lipgloss.NewStyle().Foreground(lipgloss.Color("69")).Render(label))
-		}
-	}
 	if m.lastError != "" {
 		blocks = append(blocks, m.renderMetaParagraph(width, "!! ", m.styles.errorText, m.lastError))
 	}

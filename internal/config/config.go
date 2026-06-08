@@ -10,18 +10,27 @@ import (
 )
 
 const (
-	defaultMaxSteps = 1000
+	defaultMaxSteps = 10000
 )
 
+type AgentConfig struct {
+	Description  string   `json:"description"`
+	Prompt       string   `json:"prompt,omitempty"`
+	Instructions []string `json:"instructions,omitempty"`
+	Tools        []string `json:"tools,omitempty"`
+	MaxSteps     int      `json:"max_steps,omitempty"`
+}
+
 type Config struct {
-	Path         string               `json:"-"`
-	Model        string               `json:"model"`
-	MaxSteps     int                  `json:"max_steps"`
-	AutoApprove  bool                 `json:"auto_approve"`
-	Providers    map[string]Provider  `json:"providers"`
-	Models       map[string]Model     `json:"models"`
-	MCPServers   map[string]MCPServer `json:"mcp_servers,omitempty"`
-	Instructions []string             `json:"instructions"`
+	Path         string                 `json:"-"`
+	Model        string                 `json:"model"`
+	MaxSteps     int                    `json:"max_steps"`
+	AutoApprove  bool                   `json:"auto_approve"`
+	Providers    map[string]Provider    `json:"providers"`
+	Models       map[string]Model       `json:"models"`
+	MCPServers   map[string]MCPServer   `json:"mcp_servers,omitempty"`
+	Instructions []string               `json:"instructions"`
+	Agents       map[string]AgentConfig `json:"agents,omitempty"`
 }
 
 type MCPServer struct {
@@ -106,6 +115,25 @@ func (m Model) Merge(other Model) Model {
 		m.Temperature = other.Temperature
 	}
 	return m
+}
+
+func (a AgentConfig) Merge(other AgentConfig) AgentConfig {
+	if other.Description != "" {
+		a.Description = other.Description
+	}
+	if other.Prompt != "" {
+		a.Prompt = other.Prompt
+	}
+	if len(other.Instructions) > 0 {
+		a.Instructions = other.Instructions
+	}
+	if len(other.Tools) > 0 {
+		a.Tools = other.Tools
+	}
+	if other.MaxSteps != 0 {
+		a.MaxSteps = other.MaxSteps
+	}
+	return a
 }
 
 // Load loads the configuration with a two-level merge strategy:
@@ -197,6 +225,18 @@ func mergeConfig(global, project Config) Config {
 		global.MCPServers = project.MCPServers
 	}
 
+	// Merge agents: project overlays global with per-key deep merge.
+	if global.Agents == nil {
+		global.Agents = make(map[string]AgentConfig)
+	}
+	for key, projAgent := range project.Agents {
+		if existing, ok := global.Agents[key]; ok {
+			global.Agents[key] = existing.Merge(projAgent)
+		} else {
+			global.Agents[key] = projAgent
+		}
+	}
+
 	return global
 }
 
@@ -279,6 +319,16 @@ func postLoad(cfg *Config) error {
 			return fmt.Errorf("mcp_server %q unsupported transport %q", name, transport)
 		}
 		cfg.MCPServers[name] = mcpSvr
+	}
+
+	for name, agent := range cfg.Agents {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("agent key must not be empty")
+		}
+		if agent.MaxSteps <= 0 {
+			agent.MaxSteps = defaultMaxSteps
+		}
+		cfg.Agents[name] = agent
 	}
 
 	for ref, model := range cfg.Models {

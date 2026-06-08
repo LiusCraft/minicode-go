@@ -17,6 +17,7 @@ import (
 	"minioc/internal/project"
 	"minioc/internal/safety"
 	"minioc/internal/session"
+	"minioc/internal/subagent"
 	"minioc/internal/tools"
 	mcpmanager "minioc/internal/tools/mcp"
 	"minioc/internal/tui"
@@ -115,6 +116,23 @@ func run() int {
 		}
 	}
 	client := provider.NewClient(providerRegistry, catalog)
+
+	subagentMgr := subagent.NewManager(
+		client,
+		sessionStore,
+		registry,
+		cfg.Agents,
+		permissionManager,
+		cfg.MaxSteps,
+		repoRoot,
+		workdir,
+		cfg.Model,
+		current.ID,
+	)
+	registry.Register(subagent.SpawnAgentTool(subagentMgr))
+	registry.Register(subagent.ListAgentsTool(subagentMgr))
+	registry.Register(subagent.GetAgentSessionTool(subagentMgr))
+	registry.Register(subagent.KillAgentTool(subagentMgr))
 
 	loop := agent.Loop{
 		Client:       client,

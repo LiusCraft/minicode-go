@@ -147,8 +147,6 @@ type model struct {
 	showHistory       bool
 	showLatestDetails bool
 	subagentMgr       *subagent.Manager
-	subagents         []subagent.AgentInfo
-	focusAgent        string
 }
 
 type styles struct {

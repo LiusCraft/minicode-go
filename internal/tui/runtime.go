@@ -20,7 +20,6 @@ func Run(cfg Config) error {
 	if cfg.SubagentMgr != nil {
 		m.subagentMgr = cfg.SubagentMgr
 		notify.On("subagent:*", func(e notify.Event) {
-			m.subagents = m.subagentMgr.Agents()
 			m.emit(subagentUpdateMsg{})
 		})
 	}

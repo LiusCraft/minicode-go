@@ -94,7 +94,7 @@ func (m *model) renderComposer(width int) string {
 
 func (m *model) renderFooter(width int) string {
 	left := m.styles.footer.Render(filepath.Base(m.displayPath())) + m.spaceFill(1, m.styles.screenFill) + m.styles.footerAccent.Render("("+m.statusText+")")
-	right := m.styles.footerMuted.Render("enter send  |  ctrl+j newline  |  ctrl+o history  |  ctrl+t details  |  ctrl+s subagent  |  pgup/down scroll  |  esc stop")
+	right := m.styles.footerMuted.Render("enter send  |  ctrl+j newline  |  ctrl+o history  |  ctrl+t details  |  pgup/down scroll  |  esc stop")
 	gap := width - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
 		return m.fillLine(left+m.spaceFill(1, m.styles.screenFill)+right, width, m.styles.screenFill)
@@ -111,9 +111,6 @@ func (m *model) renderSceneContent(width, height int) string {
 }
 
 func (m *model) renderSessionScene(width int) string {
-	if m.focusAgent != "" && m.subagentMgr != nil {
-		return m.renderSubagentDetail(width)
-	}
 	blocks := []string{}
 	if len(m.turns) == 0 && strings.TrimSpace(m.assistantDraft) == "" {
 		blocks = append(blocks,
@@ -151,83 +148,18 @@ func (m *model) renderSessionScene(width int) string {
 	if m.subagentMgr != nil {
 		agents := m.subagentMgr.Agents()
 		if len(agents) > 0 {
-			var sb strings.Builder
-			sb.WriteString("\n  ── Subagents ──\n")
+			var parts []string
 			for _, a := range agents {
-				var statusColor string
-				switch a.Status {
-				case "running":
-					statusColor = "●"
-				case "completed":
-					statusColor = "✓"
-				case "error":
-					statusColor = "✗"
-				default:
-					statusColor = "●"
-				}
-				shortID := a.AgentID
-				if len(shortID) > 8 {
-					shortID = shortID[len(shortID)-8:]
-				}
-				marker := " "
-				if a.AgentID == m.focusAgent {
-					marker = "▶"
-				}
-				sb.WriteString(fmt.Sprintf("  %s%s %s [%s]  steps=%d  %dms\n",
-					marker, statusColor, shortID, a.AgentType, a.StepCount, a.ElapsedMillis))
+				parts = append(parts, fmt.Sprintf("sub:%s", a.AgentType))
 			}
-			sb.WriteString("     ctrl+s view details  |  ctrl+k kill")
-			blocks = append(blocks, lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(sb.String()))
+			label := fmt.Sprintf("  ⟳ %s", strings.Join(parts, "  "))
+			blocks = append(blocks, lipgloss.NewStyle().Foreground(lipgloss.Color("69")).Render(label))
 		}
 	}
 	if m.lastError != "" {
 		blocks = append(blocks, m.renderMetaParagraph(width, "!! ", m.styles.errorText, m.lastError))
 	}
 	return strings.Join(blocks, "\n\n")
-}
-
-func (m *model) renderSubagentDetail(width int) string {
-	sess := m.subagentMgr.GetAgent(m.focusAgent)
-	if sess == nil {
-		m.focusAgent = ""
-		return ""
-	}
-	var sb strings.Builder
-	shortID := m.focusAgent
-	if len(shortID) > 12 {
-		shortID = shortID[len(shortID)-12:]
-	}
-	sb.WriteString(fmt.Sprintf("Subagent %s (ctrl+s next  |  ctrl+k kill  |  esc back)\n\n", shortID))
-	for _, msg := range sess.Messages {
-		role := string(msg.Role)
-		var prefix string
-		switch role {
-		case "user":
-			prefix = "  > "
-		case "assistant":
-			prefix = "  🤖 "
-		case "tool":
-			prefix = "  🔧 "
-			if msg.ToolName != "" {
-				prefix = fmt.Sprintf("  🔧 %s ", msg.ToolName)
-			}
-		}
-		content := msg.Content
-		if len(content) > width-10 {
-			content = content[:width-10] + "..."
-		}
-		if content != "" {
-			sb.WriteString(fmt.Sprintf("%s%s\n", prefix, content))
-		}
-		if msg.Status != "" {
-			sb.WriteString(fmt.Sprintf("     status: %s\n", msg.Status))
-		}
-	}
-	if sb.Len() == 0 {
-		sb.WriteString("(no messages yet - subagent is initializing)")
-	}
-	body := lipgloss.NewStyle().Foreground(lipgloss.Color("#C6D1D2")).Render(sb.String())
-	return m.fillBlock(body, width, 10, m.styles.screenFill)
 }
 
 func (m *model) renderPermissionScene(width, height int) string {

@@ -22,6 +22,7 @@ type Loop struct {
 	Tools        *tools.Registry
 	MaxSteps     int
 	Instructions []string
+	SystemPrompt string // appended after built instructions, used for subagent role prompts
 }
 
 type Hooks struct {
@@ -37,6 +38,18 @@ type toolExecution struct {
 }
 
 const llmStepTimeout = 90 * time.Second
+
+func (l Loop) buildInstructions(sess *session.Session) string {
+	instructions := prompt.Build(sess.RepoRoot, sess.Model,
+		prompt.WithWorkdir(sess.Workdir),
+		prompt.WithMaxSteps(l.MaxSteps),
+		prompt.WithInstructionPaths(l.Instructions),
+	)
+	if l.SystemPrompt != "" {
+		instructions += "\n\n" + l.SystemPrompt
+	}
+	return instructions
+}
 
 func (l Loop) Run(ctx context.Context, sess *session.Session, permissions *safety.PermissionManager, userInput string, hooks *Hooks) (string, error) {
 	if strings.TrimSpace(userInput) == "" {
@@ -61,15 +74,11 @@ func (l Loop) Run(ctx context.Context, sess *session.Session, permissions *safet
 		}
 
 		req := llm.Request{
-			Model: sess.Model,
-			Instructions: prompt.Build(sess.RepoRoot, sess.Model,
-				prompt.WithWorkdir(sess.Workdir),
-				prompt.WithMaxSteps(l.MaxSteps),
-				prompt.WithInstructionPaths(l.Instructions),
-			),
-			Messages: toLLMMessages(sess.Messages),
-			Tools:    l.Tools.Definitions(),
-			Stream:   streamHandler,
+			Model:        sess.Model,
+			Instructions: l.buildInstructions(sess),
+			Messages:     toLLMMessages(sess.Messages),
+			Tools:        l.Tools.Definitions(),
+			Stream:       streamHandler,
 		}
 
 		stepCtx, cancel := context.WithTimeout(ctx, llmStepTimeout)

@@ -14,13 +14,24 @@ const (
 )
 
 type Config struct {
-	Path         string              `json:"-"`
-	Model        string              `json:"model"`
-	MaxSteps     int                 `json:"max_steps"`
-	AutoApprove  bool                `json:"auto_approve"`
-	Providers    map[string]Provider `json:"providers"`
-	Models       map[string]Model    `json:"models"`
-	Instructions []string            `json:"instructions"`
+	Path         string               `json:"-"`
+	Model        string               `json:"model"`
+	MaxSteps     int                  `json:"max_steps"`
+	AutoApprove  bool                 `json:"auto_approve"`
+	Providers    map[string]Provider  `json:"providers"`
+	Models       map[string]Model     `json:"models"`
+	MCPServers   map[string]MCPServer `json:"mcp_servers,omitempty"`
+	Instructions []string             `json:"instructions"`
+}
+
+type MCPServer struct {
+	Transport       string            `json:"transport"`
+	Command         string            `json:"command,omitempty"`
+	Args            []string          `json:"args,omitempty"`
+	Env             map[string]string `json:"env,omitempty"`
+	URL             string            `json:"url,omitempty"`
+	Headers         map[string]string `json:"headers,omitempty"`
+	MessageEndpoint string            `json:"message_endpoint,omitempty"`
 }
 
 type Provider struct {
@@ -181,6 +192,11 @@ func mergeConfig(global, project Config) Config {
 		global.Instructions = project.Instructions
 	}
 
+	// Merge MCP servers: project-level replaces global if non-empty.
+	if len(project.MCPServers) > 0 {
+		global.MCPServers = project.MCPServers
+	}
+
 	return global
 }
 
@@ -235,6 +251,34 @@ func postLoad(cfg *Config) error {
 		provider.Type = strings.TrimSpace(provider.Type)
 		provider.BaseURL = strings.TrimSpace(provider.BaseURL)
 		cfg.Providers[name] = provider
+	}
+
+	for name, mcpSvr := range cfg.MCPServers {
+		key := strings.TrimSpace(name)
+		if key == "" {
+			return fmt.Errorf("mcp_server key must not be empty")
+		}
+		transport := strings.TrimSpace(mcpSvr.Transport)
+		if transport == "" {
+			return fmt.Errorf("mcp_server %q transport is required", name)
+		}
+		switch transport {
+		case "stdio":
+			if mcpSvr.Command == "" {
+				return fmt.Errorf("mcp_server %q stdio requires command", name)
+			}
+		case "streamable-http":
+			if mcpSvr.URL == "" {
+				return fmt.Errorf("mcp_server %q streamable-http requires url", name)
+			}
+		case "sse":
+			if mcpSvr.URL == "" {
+				return fmt.Errorf("mcp_server %q sse requires url", name)
+			}
+		default:
+			return fmt.Errorf("mcp_server %q unsupported transport %q", name, transport)
+		}
+		cfg.MCPServers[name] = mcpSvr
 	}
 
 	for ref, model := range cfg.Models {

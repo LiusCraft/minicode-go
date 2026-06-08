@@ -13,10 +13,12 @@ import (
 	"minioc/internal/llm/provider"
 	anthropicprovider "minioc/internal/llm/provider/anthropic"
 	openaicompatible "minioc/internal/llm/provider/openaicompatible"
+	"minioc/internal/notify"
 	"minioc/internal/project"
 	"minioc/internal/safety"
 	"minioc/internal/session"
 	"minioc/internal/tools"
+	mcpmanager "minioc/internal/tools/mcp"
 	"minioc/internal/tui"
 )
 
@@ -88,6 +90,17 @@ func run() int {
 		tools.WriteFileTool(),
 		tools.FetchTool(),
 	)
+
+	mcpManager := mcpmanager.NewManager()
+	if len(cfg.MCPServers) > 0 {
+		mcpManager.StartAll(ctx, cfg.MCPServers)
+		mcpManager.RegisterTools(ctx, registry)
+	}
+	defer mcpManager.CloseAll()
+
+	notify.On("mcp:server_failed", func(e notify.Event) {
+		registry.UnregisterAll(e.Source + "__")
+	})
 
 	providerRegistry := provider.NewRegistry()
 	for key, providerConfig := range cfg.Providers {

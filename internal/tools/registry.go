@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"minioc/internal/llm/provider"
 )
@@ -51,4 +52,42 @@ func (r *Registry) Execute(ctx context.Context, name string, arguments json.RawM
 func (r *Registry) IsParallelSafe(name string) bool {
 	spec, ok := r.tools[name]
 	return ok && spec.ParallelSafe
+}
+
+func (r *Registry) Register(spec Spec) {
+	r.tools[spec.Name] = spec
+	r.order = append(r.order, spec.Name)
+	sort.Strings(r.order)
+}
+
+func (r *Registry) Unregister(name string) {
+	delete(r.tools, name)
+	for i, n := range r.order {
+		if n == name {
+			r.order = append(r.order[:i], r.order[i+1:]...)
+			break
+		}
+	}
+}
+
+func (r *Registry) UnregisterAll(prefix string) {
+	for _, name := range r.order {
+		if strings.HasPrefix(name, prefix) {
+			delete(r.tools, name)
+		}
+	}
+	var keep []string
+	for _, name := range r.order {
+		if _, ok := r.tools[name]; ok {
+			keep = append(keep, name)
+		}
+	}
+	r.order = keep
+}
+
+func (r *Registry) ReloadTools(prefix string, newTools []Spec) {
+	r.UnregisterAll(prefix)
+	for _, spec := range newTools {
+		r.Register(spec)
+	}
 }

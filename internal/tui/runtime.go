@@ -132,9 +132,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, waitExternalCmd(m.externalEvents))
 
 	case permissionRequestMsg:
+		if m.pendingPermission != nil {
+			break // already waiting for user, don't overwrite
+		}
 		m.pendingPermission = &permissionPrompt{Kind: msg.Kind, Summary: msg.Summary, Reply: msg.Reply}
 		m.statusText = "Waiting for permission approval"
-		cmds = append(cmds, waitExternalCmd(m.externalEvents))
+		// Don't add waitExternalCmd: chain stops until user responds
+		// Next permission requests stay in channel, processed after approval
 
 	case runFinishedMsg:
 		m.finishRun(msg)

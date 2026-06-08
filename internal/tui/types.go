@@ -147,6 +147,8 @@ type model struct {
 	showHistory       bool
 	showLatestDetails bool
 	subagentMgr       *subagent.Manager
+	focusAgent        string // subagent ID being viewed in detail; empty = main conversation
+	subagentIdx       int    // index of selected subagent in the fork panel
 }
 
 type styles struct {

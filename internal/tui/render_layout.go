@@ -7,6 +7,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"minioc/internal/session"
 )
 
 func (m *model) renderCompactView() tea.View {
@@ -106,6 +108,9 @@ func (m *model) renderSceneContent(width, height int) string {
 }
 
 func (m *model) renderSessionScene(width int) string {
+	if m.focusAgent != "" && m.subagentMgr != nil {
+		return m.renderSubagentDetail(width)
+	}
 	blocks := []string{}
 	if len(m.turns) == 0 && strings.TrimSpace(m.assistantDraft) == "" {
 		blocks = append(blocks,
@@ -170,7 +175,7 @@ func (m *model) renderPermissionScene(width, height int) string {
 }
 
 func (m *model) renderSubagentPanel(width int) string {
-	if m.subagentMgr == nil {
+	if m.subagentMgr == nil || m.focusAgent != "" {
 		return ""
 	}
 	agents := m.subagentMgr.Agents()
@@ -178,7 +183,7 @@ func (m *model) renderSubagentPanel(width int) string {
 		return ""
 	}
 	var sb strings.Builder
-	for _, a := range agents {
+	for i, a := range agents {
 		icon := "●"
 		switch a.Status {
 		case "completed":
@@ -190,10 +195,53 @@ func (m *model) renderSubagentPanel(width int) string {
 		if len(shortID) > 8 {
 			shortID = shortID[len(shortID)-8:]
 		}
-		sb.WriteString(fmt.Sprintf("  %s %s [%s]  steps=%d  %dms\n",
-			icon, shortID, a.AgentType, a.StepCount, a.ElapsedMillis))
+		sel := " "
+		if i == m.subagentIdx {
+			sel = "▶"
+		}
+		sb.WriteString(fmt.Sprintf(" %s%s %s [%s]  steps=%d  %dms\n",
+			sel, icon, shortID, a.AgentType, a.StepCount, a.ElapsedMillis))
 	}
 	return m.fillBlock(sb.String(), width, len(agents), m.styles.subagentFill)
+}
+
+func (m *model) renderSubagentDetail(width int) string {
+	sess := m.subagentMgr.GetAgent(m.focusAgent)
+	if sess == nil {
+		m.focusAgent = ""
+		return ""
+	}
+	var sb strings.Builder
+	shortID := m.focusAgent
+	if len(shortID) > 12 {
+		shortID = shortID[len(shortID)-12:]
+	}
+	sb.WriteString(fmt.Sprintf("Subagent %s  (Esc back | x kill)\n\n", shortID))
+	for _, msg := range sess.Messages {
+		var prefix string
+		switch msg.Role {
+		case session.RoleUser:
+			prefix = "  > "
+		case session.RoleAssistant:
+			prefix = "  · "
+		case session.RoleTool:
+			prefix = "  ◆ "
+			if msg.ToolName != "" {
+				prefix = fmt.Sprintf("  ◆ %s ", msg.ToolName)
+			}
+		}
+		content := msg.Content
+		if len(content) > width-10 {
+			content = content[:width-10] + "..."
+		}
+		if content != "" {
+			sb.WriteString(fmt.Sprintf("%s%s\n", prefix, content))
+		}
+	}
+	if sb.Len() == 0 {
+		sb.WriteString("(no messages yet)")
+	}
+	return sb.String()
 }
 
 func (m *model) renderPromptPreview(width int, text string) string {

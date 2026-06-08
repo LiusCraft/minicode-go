@@ -36,6 +36,12 @@ func (m *model) handleKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		m.showLatestDetails = !m.showLatestDetails
 		return true, nil
 	case "esc":
+		if m.focusAgent != "" {
+			m.focusAgent = ""
+			m.subagentIdx = 0
+			m.statusText = "Ready"
+			return true, nil
+		}
 		if m.running && m.runCancel != nil {
 			m.runCancel()
 			m.statusText = "Interrupt requested"
@@ -49,9 +55,35 @@ func (m *model) handleKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		m.viewport.PageDown()
 		return true, nil
 	case "up":
+		if m.focusAgent != "" {
+			m.viewport.ScrollUp(1)
+			return true, nil
+		}
+		if m.subagentMgr != nil {
+			agents := m.subagentMgr.Agents()
+			if len(agents) > 0 {
+				if m.subagentIdx > 0 {
+					m.subagentIdx--
+				}
+				return true, nil
+			}
+		}
 		m.viewport.ScrollUp(1)
 		return true, nil
 	case "down":
+		if m.focusAgent != "" {
+			m.viewport.ScrollDown(1)
+			return true, nil
+		}
+		if m.subagentMgr != nil {
+			agents := m.subagentMgr.Agents()
+			if len(agents) > 0 {
+				if m.subagentIdx < len(agents)-1 {
+					m.subagentIdx++
+				}
+				return true, nil
+			}
+		}
 		m.viewport.ScrollDown(1)
 		return true, nil
 	case "home":
@@ -67,6 +99,14 @@ func (m *model) handleKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		m.inputBox.InsertString("\n")
 		return true, nil
 	case "enter":
+		if m.focusAgent == "" && m.subagentMgr != nil {
+			agents := m.subagentMgr.Agents()
+			if len(agents) > 0 && m.subagentIdx < len(agents) {
+				m.focusAgent = agents[m.subagentIdx].AgentID
+				m.statusText = fmt.Sprintf("Viewing subagent %s", m.focusAgent)
+				return true, nil
+			}
+		}
 		if m.running {
 			m.statusText = "Agent is already running"
 			return true, nil
@@ -78,6 +118,16 @@ func (m *model) handleKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		m.resetInputBox()
 		m.startRun(prompt)
 		return true, nil
+	case "x":
+		if m.focusAgent != "" && m.subagentMgr != nil {
+			agentID := m.focusAgent
+			m.subagentMgr.Kill(agentID)
+			m.focusAgent = ""
+			m.subagentIdx = 0
+			m.statusText = "Subagent killed"
+			return true, nil
+		}
+		return false, nil
 	}
 
 	return false, nil

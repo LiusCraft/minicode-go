@@ -94,12 +94,7 @@ func (m *model) renderComposer(width int) string {
 
 func (m *model) renderFooter(width int) string {
 	left := m.styles.footer.Render(filepath.Base(m.displayPath())) + m.spaceFill(1, m.styles.screenFill) + m.styles.footerAccent.Render("("+m.statusText+")")
-	right := m.styles.footerMuted.Render("enter send  |  ctrl+j newline  |  ctrl+o history  |  ctrl+t details  |  pgup/down scroll  |  esc stop")
-	gap := width - lipgloss.Width(left) - lipgloss.Width(right)
-	if gap < 1 {
-		return m.fillLine(left+m.spaceFill(1, m.styles.screenFill)+right, width, m.styles.screenFill)
-	}
-	return left + m.spaceFill(gap, m.styles.screenFill) + right
+	return m.fillLine(left, width, m.styles.screenFill)
 }
 
 func (m *model) renderSceneContent(width, height int) string {

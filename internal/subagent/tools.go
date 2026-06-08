@@ -30,7 +30,7 @@ func SpawnAgentTool(mgr *Manager) tools.Spec {
 			result := mgr.Spawn(ctx, args.Agent, args.Task, args.MaxSteps)
 			output := fmt.Sprintf("Subagent [%s] %s:\n%s", result.AgentID, result.Status, result.Output)
 			if result.Status == "error" {
-				return tools.Result{Title: fmt.Sprintf("spawn_agent %s error", result.AgentID), Output: output}, fmt.Errorf("%s", output)
+				return tools.Result{Title: fmt.Sprintf("spawn_agent %s error", result.AgentID), Output: output}, nil
 			}
 			return tools.Result{Title: fmt.Sprintf("spawn_agent %s", result.AgentID), Output: output}, nil
 		},

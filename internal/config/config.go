@@ -321,14 +321,10 @@ func postLoad(cfg *Config) error {
 		cfg.MCPServers[name] = mcpSvr
 	}
 
-	for name, agent := range cfg.Agents {
+	for name := range cfg.Agents {
 		if strings.TrimSpace(name) == "" {
 			return fmt.Errorf("agent key must not be empty")
 		}
-		if agent.MaxSteps <= 0 {
-			agent.MaxSteps = defaultMaxSteps
-		}
-		cfg.Agents[name] = agent
 	}
 
 	for ref, model := range cfg.Models {

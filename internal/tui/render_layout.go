@@ -21,7 +21,7 @@ func (m *model) renderCompactView() tea.View {
 	}
 	body := lipgloss.NewStyle().Padding(1, 2).Background(lipgloss.Color("#052B33")).Render(strings.Join(lines, "\n"))
 	screen := lipgloss.Place(m.compactW, m.compactH, lipgloss.Left, lipgloss.Top, body, lipgloss.WithWhitespaceStyle(m.styles.screen))
-	v := tea.NewView(screen)
+	v := tea.NewView("\033[?1007h" + screen)
 	v.AltScreen = true
 	v.WindowTitle = "minioc TUI"
 	return v

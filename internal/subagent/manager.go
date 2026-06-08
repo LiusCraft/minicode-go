@@ -94,8 +94,9 @@ var managementTools = map[string]bool{
 
 func (m *Manager) Spawn(ctx context.Context, agentType, task string, maxSteps int) Result {
 	cfg, ok := m.agentCfgs[agentType]
-	if !ok {
-		return Result{Status: "error", Output: fmt.Sprintf("unknown agent type %q", agentType)}
+	if !ok || agentType == "" {
+		cfg = config.AgentConfig{}
+		agentType = "default"
 	}
 
 	sess := session.NewSubagent(m.repoRoot, m.workdir, m.model, m.parentSessionID)

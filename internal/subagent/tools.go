@@ -11,12 +11,12 @@ import (
 func SpawnAgentTool(mgr *Manager) tools.Spec {
 	return tools.Spec{
 		Name:        "spawn_agent",
-		Description: "Spawn a subagent with an isolated context to execute a task. Blocks until the subagent completes. Multiple spawn_agent calls in one response run concurrently.",
+		Description: "Execute a sub-task in an isolated sub-agent with its own context window. When the user mentions 'subagent', 'sub-agent', '另一个agent', '独立任务', or asks for parallel work, use this tool. Also useful for self-contained tasks that benefit from a fresh context - research, code review, file analysis. Blocks until done; multiple calls run concurrently.",
 		Parameters: tools.ObjectSchema(map[string]any{
-			"agent":     map[string]any{"type": "string", "description": "Agent type name from minioc.json agents config"},
+			"agent":     map[string]any{"type": "string", "description": "Agent type from minioc.json agents config (optional, uses default if empty)"},
 			"task":      map[string]any{"type": "string", "description": "Task description for the subagent"},
 			"max_steps": map[string]any{"type": "integer", "description": "Max agentic steps (overrides config)"},
-		}, "agent", "task"),
+		}, "task"),
 		ParallelSafe: true,
 		Execute: func(ctx context.Context, callCtx tools.CallContext, raw json.RawMessage) (tools.Result, error) {
 			var args struct {

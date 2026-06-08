@@ -5,6 +5,9 @@ func ObjectSchema(properties map[string]any, required ...string) map[string]any 
 }
 
 func objectSchema(properties map[string]any, required ...string) map[string]any {
+	if properties == nil {
+		properties = make(map[string]any)
+	}
 	schema := map[string]any{
 		"type":                 "object",
 		"properties":           properties,

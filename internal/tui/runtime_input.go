@@ -48,6 +48,12 @@ func (m *model) handleKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	case "pgdown":
 		m.viewport.PageDown()
 		return true, nil
+	case "up":
+		m.viewport.ScrollUp(1)
+		return true, nil
+	case "down":
+		m.viewport.ScrollDown(1)
+		return true, nil
 	case "home":
 		m.viewport.GotoTop()
 		return true, nil

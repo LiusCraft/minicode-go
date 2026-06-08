@@ -42,7 +42,6 @@ func newModel(cfg Config) *model {
 	vp := viewport.New()
 	vp.SoftWrap = true
 	vp.FillHeight = false
-	vp.MouseWheelEnabled = true
 	vp.Style = lipgloss.NewStyle().Background(lipgloss.Color("#052B33")).Foreground(lipgloss.Color("#A8B7B8"))
 	inputBox := textarea.New()
 	inputBox.Prompt = "> "
@@ -149,12 +148,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if mouseMsg, ok := msg.(tea.MouseMsg); ok {
-		var cmd tea.Cmd
-		m.viewport, cmd = m.viewport.Update(mouseMsg)
-		cmds = append(cmds, cmd)
-	}
-
 	if m.pendingPermission == nil {
 		var cmd tea.Cmd
 		m.inputBox, cmd = m.inputBox.Update(msg)
@@ -187,9 +180,8 @@ func (m *model) View() tea.View {
 	body = lipgloss.NewStyle().Padding(1, 2).Background(lipgloss.Color("#052B33")).Render(body)
 	screen := lipgloss.Place(m.width, m.height, lipgloss.Left, lipgloss.Top, body, lipgloss.WithWhitespaceStyle(m.styles.screen))
 
-	v := tea.NewView(screen)
+	v := tea.NewView("\033[?1007h" + screen)
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
 	v.WindowTitle = "minioc TUI"
 	return v
 }

@@ -60,6 +60,17 @@ func (r *Registry) Register(spec Spec) {
 	sort.Strings(r.order)
 }
 
+func (r *Registry) GetSpec(name string) (Spec, bool) {
+	spec, ok := r.tools[name]
+	return spec, ok
+}
+
+func (r *Registry) Names() []string {
+	result := make([]string, len(r.order))
+	copy(result, r.order)
+	return result
+}
+
 func (r *Registry) Unregister(name string) {
 	delete(r.tools, name)
 	for i, n := range r.order {

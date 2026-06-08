@@ -16,7 +16,6 @@ import (
 	"minioc/internal/project"
 	"minioc/internal/safety"
 	"minioc/internal/session"
-	"minioc/internal/store"
 	"minioc/internal/tools"
 	"minioc/internal/tui"
 )
@@ -71,24 +70,12 @@ func run() int {
 		return 1
 	}
 
-	sessionStore := store.NewFileStore(config.SessionsDir(repoRoot))
+	sessionStore := session.NewFileStore(config.SessionsDir(repoRoot))
 
-	var current *session.Session
-	if *continueFlag != "" {
-		current, err = sessionStore.Load(ctx, *continueFlag)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "load session error: %v\n", err)
-			return 1
-		}
-		if current.RepoRoot != "" && current.RepoRoot != repoRoot {
-			fmt.Fprintf(os.Stderr, "session %s belongs to repo %s, not %s\n", current.ID, current.RepoRoot, repoRoot)
-			return 1
-		}
-		current.Workdir = workdir
-		current.RepoRoot = repoRoot
-		current.Model = cfg.Model
-	} else {
-		current = session.New(repoRoot, workdir, cfg.Model)
+	current, err := session.Open(ctx, sessionStore, repoRoot, workdir, cfg.Model, *continueFlag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "session error: %v\n", err)
+		return 1
 	}
 
 	permissionManager := safety.NewPermissionManager(os.Stdin, os.Stderr, cfg.AutoApprove)

@@ -12,7 +12,6 @@ import (
 	"minioc/internal/llm"
 	"minioc/internal/safety"
 	"minioc/internal/session"
-	"minioc/internal/store"
 	"minioc/internal/tools"
 )
 
@@ -34,18 +33,6 @@ func (c *scriptedClient) Run(_ context.Context, req llm.Request) (llm.Result, er
 	c.results = c.results[1:]
 	return result, nil
 }
-
-type noopStore struct{}
-
-func (noopStore) Load(context.Context, string) (*session.Session, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (noopStore) Save(context.Context, *session.Session) error {
-	return nil
-}
-
-var _ store.Store = noopStore{}
 
 func TestLoopRunsParallelSafeToolCallsConcurrently(t *testing.T) {
 	started := make(chan string, 2)
@@ -77,7 +64,8 @@ func TestLoopRunsParallelSafeToolCallsConcurrently(t *testing.T) {
 		{Text: "done"},
 	}}
 
-	loop := Loop{Client: client, Store: noopStore{}, Tools: registry, MaxSteps: 4}
+	store := session.NewFileStore(t.TempDir())
+	loop := Loop{Client: client, Store: store, Tools: registry, MaxSteps: 4}
 	sess := session.New("/repo", "/repo", "test-model")
 	permissions := safety.NewPermissionManager(nilReader{}, io.Discard, true)
 
@@ -144,7 +132,8 @@ func TestLoopKeepsUnsafeToolCallsSequential(t *testing.T) {
 		{Text: "done"},
 	}}
 
-	loop := Loop{Client: client, Store: noopStore{}, Tools: registry, MaxSteps: 4}
+	store := session.NewFileStore(t.TempDir())
+	loop := Loop{Client: client, Store: store, Tools: registry, MaxSteps: 4}
 	sess := session.New("/repo", "/repo", "test-model")
 	permissions := safety.NewPermissionManager(nilReader{}, io.Discard, true)
 

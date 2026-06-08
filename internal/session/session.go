@@ -1,9 +1,11 @@
 package session
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -43,6 +45,26 @@ type Session struct {
 }
 
 type MessageOption func(*Message)
+
+// Open creates a new session or resumes an existing one by id.
+// When id is empty, a new session is created. When id is provided,
+// the session is loaded from store and its location fields are refreshed.
+func Open(ctx context.Context, store Store, repoRoot, workdir, model, id string) (*Session, error) {
+	if id == "" {
+		return New(repoRoot, workdir, model), nil
+	}
+	sess, err := store.Load(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if sess.RepoRoot != "" && sess.RepoRoot != repoRoot {
+		return nil, fmt.Errorf("session %s belongs to repo %s, not %s", id, sess.RepoRoot, repoRoot)
+	}
+	sess.Workdir = workdir
+	sess.RepoRoot = repoRoot
+	sess.Model = model
+	return sess, nil
+}
 
 func New(repoRoot, workdir, model string) *Session {
 	now := time.Now().UTC()

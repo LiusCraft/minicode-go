@@ -13,13 +13,12 @@ import (
 	"minioc/internal/llm"
 	"minioc/internal/safety"
 	"minioc/internal/session"
-	"minioc/internal/store"
 	"minioc/internal/tools"
 )
 
 type Loop struct {
 	Client       llm.Client
-	Store        store.Store
+	Store        session.Store
 	Tools        *tools.Registry
 	MaxSteps     int
 	Instructions []string

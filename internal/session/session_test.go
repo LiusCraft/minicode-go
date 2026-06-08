@@ -1,7 +1,10 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -175,6 +178,230 @@ func TestMessageIDUnique(t *testing.T) {
 	ids := map[string]bool{msg1.ID: true, msg2.ID: true, msg3.ID: true}
 	if len(ids) != 3 {
 		t.Errorf("IDs should be unique: %v %v %v", msg1.ID, msg2.ID, msg3.ID)
+	}
+}
+
+func TestOpenNewSession(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	sess, err := Open(context.Background(), store, "/repo", "/repo/src", "gpt-4", "")
+	if err != nil {
+		t.Fatalf("Open new session failed: %v", err)
+	}
+	if sess.ID == "" {
+		t.Fatal("expected non-empty ID")
+	}
+	if sess.RepoRoot != "/repo" {
+		t.Errorf("RepoRoot: got %q, want %q", sess.RepoRoot, "/repo")
+	}
+	if sess.Workdir != "/repo/src" {
+		t.Errorf("Workdir: got %q, want %q", sess.Workdir, "/repo/src")
+	}
+	if sess.Model != "gpt-4" {
+		t.Errorf("Model: got %q, want %q", sess.Model, "gpt-4")
+	}
+}
+
+func TestOpenResumeSession(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	ctx := context.Background()
+
+	original := New("/repo", "/repo/old-src", "claude-3")
+	original.AddMessage(RoleUser, "hello")
+	if err := store.Save(ctx, original); err != nil {
+		t.Fatal(err)
+	}
+
+	// resume with updated workdir/model (same repo root)
+	sess, err := Open(ctx, store, "/repo", "/repo/src", "gpt-4", original.ID)
+	if err != nil {
+		t.Fatalf("Open resume failed: %v", err)
+	}
+	if sess.ID != original.ID {
+		t.Errorf("ID: got %q, want %q", sess.ID, original.ID)
+	}
+	if sess.RepoRoot != "/repo" {
+		t.Errorf("RepoRoot: got %q, want %q", sess.RepoRoot, "/repo")
+	}
+	if sess.Workdir != "/repo/src" {
+		t.Errorf("Workdir should be refreshed: got %q, want %q", sess.Workdir, "/repo/src")
+	}
+	if sess.Model != "gpt-4" {
+		t.Errorf("Model should be refreshed: got %q, want %q", sess.Model, "gpt-4")
+	}
+	if len(sess.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(sess.Messages))
+	}
+}
+
+func TestOpenResumeRepoMismatch(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	ctx := context.Background()
+
+	original := New("/other-repo", "/other-repo", "gpt-4")
+	if err := store.Save(ctx, original); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Open(ctx, store, "/my-repo", "/my-repo", "gpt-5", original.ID)
+	if err == nil {
+		t.Fatal("expected error for repo mismatch")
+	}
+}
+
+func TestOpenResumeNotFound(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	ctx := context.Background()
+
+	_, err := Open(ctx, store, "/repo", "/repo", "gpt-4", "sess_nonexistent")
+	if err == nil {
+		t.Fatal("expected error for nonexistent session")
+	}
+}
+
+func TestFileStoreSaveAndLoad(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+	store := NewFileStore(dir)
+
+	sess := New("/repo", "/repo", "gpt-4")
+	sess.AddMessage(RoleUser, "hello")
+
+	if err := store.Save(ctx, sess); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	loaded, err := store.Load(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	if loaded.ID != sess.ID {
+		t.Errorf("ID: got %q, want %q", loaded.ID, sess.ID)
+	}
+	if loaded.RepoRoot != sess.RepoRoot {
+		t.Errorf("RepoRoot: got %q, want %q", loaded.RepoRoot, sess.RepoRoot)
+	}
+	if loaded.Model != sess.Model {
+		t.Errorf("Model: got %q, want %q", loaded.Model, sess.Model)
+	}
+	if len(loaded.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(loaded.Messages))
+	}
+	if loaded.Messages[0].Content != "hello" {
+		t.Errorf("Content: got %q, want %q", loaded.Messages[0].Content, "hello")
+	}
+}
+
+func TestFileStoreSaveCreatesDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "sub", "sessions")
+	store := NewFileStore(dir)
+	sess := New("/repo", "/repo", "gpt-4")
+	ctx := context.Background()
+
+	if err := store.Save(ctx, sess); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Errorf("session dir not created: %v", err)
+	}
+}
+
+func TestFileStoreLoadNonexistent(t *testing.T) {
+	dir := t.TempDir()
+	store := NewFileStore(dir)
+	ctx := context.Background()
+
+	_, err := store.Load(ctx, "does_not_exist")
+	if err == nil {
+		t.Fatal("expected error for nonexistent session")
+	}
+}
+
+func TestFileStoreLoadCorruptedJSON(t *testing.T) {
+	dir := t.TempDir()
+	store := NewFileStore(dir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	badPath := filepath.Join(dir, "bad.json")
+	if err := os.WriteFile(badPath, []byte("not json{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	_, err := store.Load(ctx, "bad")
+	if err == nil {
+		t.Fatal("expected error for corrupted JSON")
+	}
+}
+
+func TestFileStoreSaveOverwrites(t *testing.T) {
+	dir := t.TempDir()
+	store := NewFileStore(dir)
+	ctx := context.Background()
+
+	sess := New("/repo", "/repo", "gpt-4")
+	sess.AddMessage(RoleUser, "first")
+
+	if err := store.Save(ctx, sess); err != nil {
+		t.Fatal(err)
+	}
+
+	sess.AddMessage(RoleUser, "second")
+	if err := store.Save(ctx, sess); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := store.Load(ctx, sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(loaded.Messages))
+	}
+}
+
+func TestFileStoreSaveAtomicRename(t *testing.T) {
+	dir := t.TempDir()
+	store := NewFileStore(dir)
+	ctx := context.Background()
+
+	sess := New("/repo", "/repo", "gpt-4")
+	if err := store.Save(ctx, sess); err != nil {
+		t.Fatal(err)
+	}
+
+	globPattern := filepath.Join(dir, sess.ID+"*")
+	matches, _ := filepath.Glob(globPattern)
+	for _, m := range matches {
+		if m == filepath.Join(dir, sess.ID+".tmp") {
+			t.Errorf("tmp file left behind after save: %s", m)
+		}
+	}
+}
+
+func TestFileStoreLoadContextCancelled(t *testing.T) {
+	dir := t.TempDir()
+	store := NewFileStore(dir)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := store.Load(ctx, "anything")
+	if err == nil {
+		t.Fatal("expected error from cancelled context")
+	}
+}
+
+func TestFileStoreSaveContextCancelled(t *testing.T) {
+	dir := t.TempDir()
+	store := NewFileStore(dir)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	sess := New("/repo", "/repo", "gpt-4")
+	err := store.Save(ctx, sess)
+	if err == nil {
+		t.Fatal("expected error from cancelled context")
 	}
 }
 
